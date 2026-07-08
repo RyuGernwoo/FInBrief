@@ -1,0 +1,49 @@
+# Local planning and reference artifacts
+.agents/
+.codex/
+.claude/
+docs/
+project_docs/
+ref/
+scripts/
+AGENTS.md
+CLAUDE.md
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Generated data and reports
+data/raw/
+data/processed/
+data/cache/
+reports/*
+!reports/.gitkeep
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

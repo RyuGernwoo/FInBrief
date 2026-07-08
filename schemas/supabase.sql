@@ -1,0 +1,131 @@
+-- FinBrief Supabase schema for PostgreSQL + pgvector.
+-- MVP scope: subscriptions, indicators, news RAG, card cache, delivery logs, eval logs.
+
+create extension if not exists vector;
+
+create table if not exists users (
+    id uuid primary key default gen_random_uuid(),
+    external_user_id text not null unique,
+    display_name text,
+    tier text not null default 'free' check (tier in ('free', 'paid')),
+    max_topics integer not null default 5 check (max_topics > 0),
+    discord_webhook_url text,
+    slack_webhook_url text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists topics (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    normalized_name text not null unique,
+    type text not null check (type in ('indicator', 'keyword', 'sector', 'asset')),
+    source_mapping jsonb not null default '[]'::jsonb,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists subscriptions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references users(id) on delete cascade,
+    topic_id uuid not null references topics(id) on delete cascade,
+    channel text not null check (channel in ('discord', 'slack')),
+    active boolean not null default true,
+    created_at timestamptz not null default now(),
+    unique (user_id, topic_id, channel)
+);
+
+create table if not exists indicator_values (
+    id uuid primary key default gen_random_uuid(),
+    indicator_id text not null,
+    name text not null,
+    source text not null check (source in ('fred', 'yfinance', 'ecos', 'fixture')),
+    value_date date not null,
+    current_value double precision not null,
+    previous_value double precision,
+    change_value double precision,
+    change_percent double precision,
+    unit text,
+    missing boolean not null default false,
+    raw_payload jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    unique (indicator_id, value_date, source)
+);
+
+create table if not exists news_documents (
+    id uuid primary key default gen_random_uuid(),
+    source text not null,
+    title text not null,
+    url text not null unique,
+    published_at timestamptz not null,
+    summary text,
+    tags text[] not null default '{}',
+    raw_payload jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists news_embeddings (
+    id uuid primary key default gen_random_uuid(),
+    news_id uuid not null references news_documents(id) on delete cascade,
+    embedding vector(1536),
+    embedding_model text not null,
+    created_at timestamptz not null default now(),
+    unique (news_id, embedding_model)
+);
+
+create table if not exists cards (
+    id uuid primary key default gen_random_uuid(),
+    topic_id uuid not null references topics(id) on delete cascade,
+    run_date date not null,
+    title text not null,
+    analysis jsonb not null,
+    image_url text,
+    report_url text,
+    disclaimer text not null default '본 브리핑은 투자 조언이 아닌 참고용 정보입니다.',
+    created_at timestamptz not null default now(),
+    unique (topic_id, run_date)
+);
+
+create table if not exists deliveries (
+    id uuid primary key default gen_random_uuid(),
+    run_id text not null,
+    user_id uuid not null references users(id) on delete cascade,
+    topic_id uuid references topics(id) on delete set null,
+    card_id uuid references cards(id) on delete set null,
+    channel text not null check (channel in ('discord', 'slack')),
+    status text not null check (status in ('pending', 'sent', 'failed', 'retrying', 'skipped')),
+    attempts integer not null default 0 check (attempts >= 0),
+    error_code text,
+    error_message text,
+    sent_at timestamptz,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists eval_runs (
+    id uuid primary key default gen_random_uuid(),
+    run_id text not null,
+    eval_name text not null,
+    score double precision,
+    passed boolean not null,
+    result jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_subscriptions_user_active
+    on subscriptions(user_id, active);
+
+create index if not exists idx_indicator_values_date
+    on indicator_values(value_date);
+
+create index if not exists idx_news_documents_published_at
+    on news_documents(published_at desc);
+
+create index if not exists idx_cards_topic_date
+    on cards(topic_id, run_date);
+
+create index if not exists idx_deliveries_run_status
+    on deliveries(run_id, status);
+
+create index if not exists idx_news_embeddings_vector
+    on news_embeddings using ivfflat (embedding vector_cosine_ops)
+    with (lists = 100);
