@@ -16,7 +16,7 @@ from app.core import llm
 from app.tools import image_gen
 
 
-_IMG_OUT = os.path.join(os.path.dirname(__file__), "out_llm")
+_DIR = os.path.dirname(__file__)
 
 IMAGE_PROMPT_SYSTEM = (
     "You are an image-prompt writer for a financial card news. "
@@ -115,8 +115,12 @@ def _gen_image_prompt(content: dict) -> str:
     return _fallback_prompt(content)
 
 
+def _img_out() -> str:
+    return os.environ.get("FINBRIEF_IMG_OUT") or os.path.join(_DIR, "out_llm")
+
+
 def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
-    asset = image_gen.generate_image(prompt, _IMG_OUT, f"{run_date}_{topic_id}")
+    asset = image_gen.generate_image(prompt, _img_out(), f"{run_date}_{topic_id}")
     return asset.path if asset else None
 
 

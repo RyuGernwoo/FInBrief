@@ -15,6 +15,7 @@ def test_pipeline_with_image(monkeypatch, tmp_path):
     monkeypatch.delenv("FINBRIEF_IMAGE_STUB", raising=False)
     monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
     monkeypatch.setenv("FINBRIEF_OUT", str(tmp_path))
+    monkeypatch.setenv("FINBRIEF_IMG_OUT", str(tmp_path))   # 실제 out_llm 안 건드리게
     final = graph.invoke({"run_id": "t", "run_date": "2026-07-09",
                           "status": "queued", "cards": [], "deliveries": [], "errors": []})
     assert final["status"] == "completed"
