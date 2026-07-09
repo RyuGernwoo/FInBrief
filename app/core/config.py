@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     fred_api_key: SecretStr | None = None
     ecos_api_key: SecretStr | None = None
-    news_rss_urls: list[str] = Field(default_factory=list)
+    news_rss_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     discord_webhook_url: SecretStr | None = None
     slack_webhook_url: SecretStr | None = None

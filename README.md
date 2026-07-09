@@ -2,7 +2,7 @@
 
 FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 에이전트입니다. 매일 아침 주요 거시 금융 지표와 경제 뉴스를 수집하고, 전체 시장 리포트와 사용자 관심 토픽별 카드뉴스를 생성한 뒤 Discord 또는 Slack으로 전달하는 것을 MVP 목표로 합니다.
 
-현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 테스트 골격이 준비되어 있습니다. 다음 단계에서는 fixture 데이터, 구독 API, LangGraph mock 파이프라인을 연결합니다.
+현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안이 준비되어 있습니다. 다음 단계에서는 구독 API와 LangGraph mock 파이프라인을 연결합니다.
 
 ## 현재 구현 상태
 
@@ -13,6 +13,9 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | `GET /api/v1/health` | 완료 |
 | Pydantic 스키마 계약 | 완료 |
 | Supabase SQL 스키마 | 완료 |
+| 기본 토픽 fixture | 완료 |
+| in-memory repository | 완료 |
+| Supabase `match_news` RPC 스키마 | 완료 |
 | 기본 테스트 | 완료 |
 | 구독 API | 예정 |
 | LangGraph 리포트/카드 생성 파이프라인 | 예정 |
@@ -71,7 +74,7 @@ evals/            자동 평가 스키마와 평가 데이터셋
 reports/          로컬 생성 리포트 산출물
 schemas/          DB와 workflow 스키마 계약
 tests/            테스트 코드
-project_docs/     기획서, 로드맵, 하네스 기록 문서
+project_docs/     기획서, 로드맵, 구현 기획, 운영 검증, 하네스 기록 문서
 ref/              원본 참고 문서
 ```
 
@@ -84,7 +87,12 @@ ref/              원본 참고 문서
 | `app/api/routes_health.py` | health endpoint |
 | `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
 | `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
+| `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
+| `app/repositories/memory.py` | Supabase 없이 테스트 가능한 in-memory repository |
+| `app/repositories/supabase.py` | Supabase table/RPC adapter |
+| `data/default_topics.json` | MVP 기본 토픽 5개 fixture |
 | `schemas/supabase.sql` | Supabase PostgreSQL + pgvector 테이블 구조 |
+| `schemas/seed_topics.sql` | 기본 토픽 seed SQL |
 | `schemas/finbrief_state.schema.json` | LangGraph morning pipeline state 계약 |
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
@@ -149,13 +157,13 @@ API 문서는 서버 실행 후 다음 주소에서 확인할 수 있습니다.
 
 ```powershell
 python -m compileall app
-python -m pytest tests\test_health.py tests\test_settings.py -q
+python -m pytest tests\test_health.py tests\test_settings.py tests\test_schema_contracts.py tests\test_repositories_memory.py tests\test_repositories_supabase.py -q
 ```
 
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest tests\test_health.py tests\test_settings.py -q`: 6 passed
+- `python -m pytest`: health/settings/schema/repository 기준 통과
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙
@@ -164,12 +172,12 @@ python -m pytest tests\test_health.py tests\test_settings.py -q
 - 생성되는 모든 리포트와 카드에는 "투자 조언이 아닌 참고용" disclaimer를 포함합니다.
 - 매수/매도 추천, 수익 보장, 자동 주문 기능은 구현하지 않습니다.
 - MVP는 먼저 한 개의 end-to-end 흐름을 완주시키고, 이후 범위를 넓힙니다.
-- 구현 결과는 `project_docs/WORK_PLAN.md`, `project_docs/TEST_PLAN.md`, `project_docs/CURRENT_SESSION.md` 등 하네스 문서와 동기화합니다.
+- 구현 결과는 `project_docs/02_기획_로드맵/작업_계획_마일스톤.md`, `project_docs/05_운영_검증/테스트_계획_및_검증_기준.md`, `project_docs/05_운영_검증/현재_세션_상태.md` 등 하네스 문서와 동기화합니다.
 
 ## 다음 작업
 
-1. fixture 데이터 생성: 지표 seed, 뉴스 seed, 기본 토픽
-2. 구독 API 구현: 토픽 추가/조회/삭제, free tier 제한
-3. LangGraph mock pipeline 연결: 리포트 생성, 카드 생성, 캐시 흐름
+1. 구독 API 구현: 토픽 추가/조회/삭제, free tier 제한
+2. LangGraph mock pipeline 연결: 리포트 생성, 카드 생성, 캐시 흐름
+3. 지표/news seed와 report run endpoint 연결
 4. Discord/Slack dry-run 발송 로그 추가
 5. LiteLLM, Langfuse, 자동 평가 scaffold 연결

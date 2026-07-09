@@ -45,6 +45,7 @@ class TopicSourceMapping(StrictModel):
     series_id: str | None = None
     ticker: str | None = None
     query: str | None = None
+    news_keywords: list[str] = Field(default_factory=list)
     notes: str | None = None
 
 

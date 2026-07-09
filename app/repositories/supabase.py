@@ -1,0 +1,289 @@
+"""Supabase repository adapters.
+
+The adapters keep Supabase details behind the same contracts used by the
+in-memory repositories. They create no network connection at import time.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Any
+
+from app.core.schemas import (
+    CardArtifact,
+    NewsEvidence,
+    Subscription,
+    Topic,
+    UserProfile,
+)
+from app.repositories.protocols import (
+    RepositoryBundle,
+    RepositoryNotFoundError,
+    TopicLimitExceededError,
+)
+from app.repositories.supabase_client import SupabaseSettingsError, create_supabase_client
+
+
+QueryEmbeddingProvider = Callable[[Topic], Sequence[float]]
+
+
+def _response_data(response: Any) -> Any:
+    return getattr(response, "data", response)
+
+
+def _require_one(data: Any, label: str) -> dict[str, Any]:
+    if isinstance(data, list) and data:
+        return data[0]
+    raise RepositoryNotFoundError(f"{label} not found")
+
+
+def _topic_from_row(row: dict[str, Any]) -> Topic:
+    return Topic.model_validate(
+        {
+            "topic_id": str(row["id"]),
+            "name": row["name"],
+            "normalized_name": row["normalized_name"],
+            "type": row["type"],
+            "source_mapping": row.get("source_mapping") or [],
+            "created_at": row.get("created_at"),
+        }
+    )
+
+
+def _subscription_from_row(row: dict[str, Any]) -> Subscription:
+    return Subscription.model_validate(
+        {
+            "subscription_id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "topic_id": str(row["topic_id"]),
+            "channel": row["channel"],
+            "active": row.get("active", True),
+            "created_at": row.get("created_at"),
+        }
+    )
+
+
+def _user_from_row(row: dict[str, Any]) -> UserProfile:
+    return UserProfile.model_validate(
+        {
+            "user_id": str(row["id"]),
+            "display_name": row.get("display_name"),
+            "tier": row.get("tier", "free"),
+            "max_topics": row.get("max_topics", 5),
+            "created_at": row.get("created_at"),
+        }
+    )
+
+
+def map_news_match_result(row: dict[str, Any]) -> NewsEvidence:
+    return NewsEvidence(
+        news_id=str(row["news_id"]),
+        title=row["title"],
+        source=row["source"],
+        url=row["url"],
+        similarity=row.get("similarity"),
+        snippet=row.get("summary") or row["title"],
+    )
+
+
+def _topic_tags(topic: Topic) -> list[str]:
+    tags: list[str] = []
+    for mapping in topic.source_mapping:
+        tags.extend(mapping.news_keywords)
+    return sorted(set(tags))
+
+
+class SupabaseTopicRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def list_catalog(self) -> list[Topic]:
+        response = self._client.table("topics").select("*").execute()
+        return [_topic_from_row(row) for row in _response_data(response)]
+
+    def get(self, topic_id: str) -> Topic:
+        response = self._client.table("topics").select("*").eq("id", topic_id).execute()
+        return _topic_from_row(_require_one(_response_data(response), "Topic"))
+
+    def get_by_normalized_name(self, normalized_name: str) -> Topic | None:
+        response = (
+            self._client.table("topics")
+            .select("*")
+            .eq("normalized_name", normalized_name)
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        return _topic_from_row(data[0])
+
+
+class SupabaseUserRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def get_or_create(self, channel: str, external_user_id: str) -> UserProfile:
+        response = (
+            self._client.table("users")
+            .select("*")
+            .eq("external_user_id", external_user_id)
+            .execute()
+        )
+        data = _response_data(response)
+        if data:
+            return _user_from_row(data[0])
+
+        insert_response = (
+            self._client.table("users")
+            .insert({"external_user_id": external_user_id})
+            .execute()
+        )
+        return _user_from_row(_require_one(_response_data(insert_response), "User"))
+
+
+class SupabaseSubscriptionRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def list_active(self) -> list[Subscription]:
+        response = self._client.table("subscriptions").select("*").eq("active", True).execute()
+        return [_subscription_from_row(row) for row in _response_data(response)]
+
+    def list_by_user(self, user_id: str) -> list[Subscription]:
+        response = (
+            self._client.table("subscriptions")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("active", True)
+            .execute()
+        )
+        return [_subscription_from_row(row) for row in _response_data(response)]
+
+    def add(self, user_id: str, topic_id: str, channel: str) -> Subscription:
+        active = self.list_by_user(user_id)
+        active_topic_ids = {item.topic_id for item in active}
+        user_response = self._client.table("users").select("*").eq("id", user_id).execute()
+        user = _user_from_row(_require_one(_response_data(user_response), "User"))
+
+        if topic_id not in active_topic_ids and len(active_topic_ids) >= user.max_topics:
+            raise TopicLimitExceededError(
+                f"free tier는 최대 {user.max_topics}개 토픽까지 구독할 수 있습니다."
+            )
+
+        response = (
+            self._client.table("subscriptions")
+            .upsert(
+                {
+                    "user_id": user_id,
+                    "topic_id": topic_id,
+                    "channel": channel,
+                    "active": True,
+                },
+                on_conflict="user_id,topic_id,channel",
+            )
+            .execute()
+        )
+        return _subscription_from_row(_require_one(_response_data(response), "Subscription"))
+
+    def remove(self, user_id: str, topic_id: str) -> bool:
+        response = (
+            self._client.table("subscriptions")
+            .update({"active": False})
+            .eq("user_id", user_id)
+            .eq("topic_id", topic_id)
+            .eq("active", True)
+            .execute()
+        )
+        return bool(_response_data(response))
+
+
+class SupabaseCardRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def get(self, topic_id: str, run_date: date) -> CardArtifact | None:
+        response = (
+            self._client.table("cards")
+            .select("*")
+            .eq("topic_id", topic_id)
+            .eq("run_date", run_date.isoformat())
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        row = data[0]
+        return CardArtifact.model_validate(
+            {
+                "card_id": str(row["id"]),
+                "topic_id": str(row["topic_id"]),
+                "run_date": row["run_date"],
+                "title": row["title"],
+                "image_url": row.get("image_url"),
+                "report_url": row.get("report_url"),
+                "analysis": row["analysis"],
+                "created_at": row.get("created_at"),
+            }
+        )
+
+    def upsert(self, card: CardArtifact) -> None:
+        self._client.table("cards").upsert(
+            {
+                "id": card.card_id,
+                "topic_id": card.topic_id,
+                "run_date": card.run_date.isoformat(),
+                "title": card.title,
+                "analysis": card.analysis.model_dump(mode="json"),
+                "image_url": card.image_url,
+                "report_url": card.report_url,
+                "disclaimer": card.analysis.disclaimer,
+            },
+            on_conflict="topic_id,run_date",
+        ).execute()
+
+
+class SupabaseNewsRepository:
+    def __init__(
+        self,
+        client: Any,
+        query_embedding_provider: QueryEmbeddingProvider | None = None,
+    ) -> None:
+        self._client = client
+        self._query_embedding_provider = query_embedding_provider
+
+    def match(self, topic: Topic, since: datetime, k: int) -> list[NewsEvidence]:
+        if self._query_embedding_provider is None:
+            raise SupabaseSettingsError("query embedding provider is required for news.match")
+
+        response = self._client.rpc(
+            "match_news",
+            {
+                "query_embedding": list(self._query_embedding_provider(topic)),
+                "topic_tags": _topic_tags(topic),
+                "since": since.isoformat(),
+                "match_count": k,
+            },
+        ).execute()
+        return [map_news_match_result(row) for row in _response_data(response)]
+
+
+@dataclass(slots=True)
+class SupabaseRepositories(RepositoryBundle):
+    pass
+
+
+def create_supabase_repositories(
+    *,
+    client: Any | None = None,
+    query_embedding_provider: QueryEmbeddingProvider | None = None,
+) -> RepositoryBundle:
+    runtime_client = client or create_supabase_client()
+    return RepositoryBundle(
+        users=SupabaseUserRepository(runtime_client),
+        topics=SupabaseTopicRepository(runtime_client),
+        subscriptions=SupabaseSubscriptionRepository(runtime_client),
+        cards=SupabaseCardRepository(runtime_client),
+        news=SupabaseNewsRepository(runtime_client, query_embedding_provider),
+    )
