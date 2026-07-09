@@ -11,6 +11,8 @@ dependencies = [
     "pydantic-settings>=2.4",
     "supabase>=2.7",
     "langgraph>=1.0",
+    "litellm>=1.0",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
