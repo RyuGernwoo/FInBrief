@@ -39,6 +39,8 @@ data/processed/
 data/cache/
 reports/*
 !reports/.gitkeep
+app/agents/out/
+app/agents/out_llm/
 
 # Logs and local databases
 *.log

@@ -2,12 +2,16 @@
    지금은 fixtures 로 동작만 확인(관통). 실구현 시 파일 분리."""
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from langgraph.types import Send
 
 from .state import BriefState
 from . import fixtures as fx
+from .card_schema import CardContent
+from .render import render_card
+from app.core import llm
 
 
 # ---- 공유 단계 (main graph) ----
@@ -46,45 +50,87 @@ def _fetch_data(topic: dict) -> dict:            # [팀원]
 def _retrieve_news(topic: dict) -> list[dict]:   # [팀원] RAG(match_news) → NewsEvidence[]
     return fx.FIXTURE_NEWS.get(topic["topic_id"], [])
 
-def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:  # [나] → CardContent (stub)
+def _clip(s, n: int) -> str:
+    s = str(s).strip()
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def _user_prompt(topic: dict, data: dict, news: list[dict]) -> str:
+    lines = [f"topic: {topic['name']} ({topic['category']})",
+             f"indicator: now {data.get('value')} {data.get('unit', '')}, change {data.get('change_pct')}%",
+             "news:"]
+    lines += [f"- {n['title']}: {n['snippet']}" for n in news] or ["- (none)"]
+    return "\n".join(lines)
+
+
+def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
     chg = data.get("change_pct", 0.0)
     arrow = "상승" if chg > 0 else ("하락" if chg < 0 else "보합")
-    return {"category": topic["category"], "index_no": "00", "subtitle": topic["name"],
-            "headline": f"{topic['name']} {arrow}",
+    return {"headline": f"{topic['name']} {arrow}",
             "lead": f"{topic['name']} {data.get('value')} ({chg:+.2f}%)",
-            "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (stub)",
-            "source": "fixture · FinBrief", "evidence": news}
+            "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (local)",
+            "source": "FinBrief"}
 
-def _gen_image_prompt(content: dict) -> str:     # [나]
+
+def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
+    raw = llm.chat_json(llm.SYSTEM_ANALYZE, _user_prompt(topic, data, news)) if llm.use_llm() \
+        else _local_analysis(topic, data, news)
+    card = CardContent(
+        category=topic["category"], index_no="00",
+        subtitle=_clip(topic["name"], 20),
+        headline=_clip(raw.get("headline", topic["name"]), 14),
+        lead=_clip(raw.get("lead", ""), 45),
+        body=_clip(raw.get("body", ""), 160),
+        source=raw.get("source", "FinBrief"),
+        evidence=news,
+    )
+    return card.model_dump()
+
+
+def _gen_image_prompt(content: dict) -> str:
     return f"{content['subtitle']} illustration, muted palette, no text"
 
-def _generate_image(prompt: str) -> str | None:  # [나] Nano Banana
-    return None
 
-def _compose_card(content: dict, image_url: str | None) -> dict:  # [나] 렌더(추후 card_renderer)
-    return {**content, "image_url": image_url, "rendered": False}
+def _generate_image(prompt: str) -> str | None:
+    return None  # Phase 2: Nano Banana
 
-def _verify(card: dict, data: dict) -> tuple[bool, list[str]]:    # [나] 3축
-    issues = [] if card.get("source") else ["출처 누락"]
+
+def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
+    out = os.environ.get("FINBRIEF_OUT") or os.path.join(os.path.dirname(__file__), "out")
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, f"{run_date}_{topic_id}.png")
+    return render_card(content, path)
+
+
+def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
+    issues = []
+    if not content.get("source"):
+        issues.append("no-source")
+    if not content.get("body"):
+        issues.append("no-body")
+    if len(content.get("headline", "")) > 14:
+        issues.append("headline-overflow")
+    if len(content.get("lead", "")) > 45:
+        issues.append("lead-overflow")
     return (len(issues) == 0, issues)
 
 
-def build_card(state: BriefState) -> dict[str, Any]:
-    """[나] 토픽 1개 카드 생성 (Send 로 병렬 진입)."""
+def build_card(state: BriefState) -> dict:
     topic = state["topic"]
+    run_date = state.get("run_date", "")
     try:
         data = _fetch_data(topic)
         news = _retrieve_news(topic)
         content = _analyze(topic, data, news)
-        card = _compose_card(content, _generate_image(_gen_image_prompt(content)))
-        ok, issues = _verify(card, data)
-        card["topic_id"] = topic["topic_id"]
-        card["verified"] = ok
-        result: dict[str, Any] = {"cards": [card]}
+        content["image_url"] = _generate_image(_gen_image_prompt(content))
+        out_path = _compose_card(content, topic["topic_id"], run_date)
+        ok, issues = _verify(content, data)
+        card = {**content, "topic_id": topic["topic_id"], "image_path": out_path, "rendered": True, "verified": ok}
+        result = {"cards": [card]}
         if not ok:
             result["errors"] = [{"code": "verify", "message": ",".join(issues), "node": "verify", "topic": topic["topic_id"]}]
         return result
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return {"errors": [{"code": "build_card", "message": str(e), "node": "build_card", "topic": topic.get("topic_id")}]}
 
 
