@@ -2,7 +2,7 @@
 
 FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 에이전트입니다. 매일 아침 주요 거시 금융 지표와 경제 뉴스를 수집하고, 전체 시장 리포트와 사용자 관심 토픽별 카드뉴스를 생성한 뒤 Discord 또는 Slack으로 전달하는 것을 MVP 목표로 합니다.
 
-현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안이 준비되어 있습니다. 다음 단계에서는 구독 API와 LangGraph mock 파이프라인을 연결합니다.
+현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구가 준비되어 있습니다. 다음 단계에서는 구독 API와 LangGraph mock 파이프라인을 연결합니다.
 
 ## 현재 구현 상태
 
@@ -16,6 +16,10 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | 기본 토픽 fixture | 완료 |
 | in-memory repository | 완료 |
 | Supabase `match_news` RPC 스키마 | 완료 |
+| FRED/yfinance/ECOS mapper | 완료 |
+| RSS 뉴스 정규화/필터링/태깅 | 완료 |
+| Upstage embedding 입력/검증 도구 | 완료 |
+| Supabase ingestion payload adapter | 완료 |
 | 기본 테스트 | 완료 |
 | 구독 API | 예정 |
 | LangGraph 리포트/카드 생성 파이프라인 | 예정 |
@@ -90,6 +94,12 @@ ref/              원본 참고 문서
 | `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
 | `app/repositories/memory.py` | Supabase 없이 테스트 가능한 in-memory repository |
 | `app/repositories/supabase.py` | Supabase table/RPC adapter |
+| `app/tools/data_sources/fred.py` | FRED observations 수집/정규화 |
+| `app/tools/data_sources/yfinance_source.py` | yfinance 가격 데이터 수집/정규화 |
+| `app/tools/data_sources/ecos.py` | 한국은행 ECOS 통계 수집/정규화 |
+| `app/tools/news/rss.py` | RSS entry 정규화, 중복 제거, 최신 뉴스 필터링 |
+| `app/tools/news/tagging.py` | 토픽 `news_keywords` 기반 뉴스 태깅 |
+| `app/tools/embedding/upstage.py` | passage/query embedding 입력 생성과 4096차원 검증 |
 | `data/default_topics.json` | MVP 기본 토픽 5개 fixture |
 | `schemas/supabase.sql` | Supabase PostgreSQL + pgvector 테이블 구조 |
 | `schemas/seed_topics.sql` | 기본 토픽 seed SQL |
@@ -153,17 +163,27 @@ API 문서는 서버 실행 후 다음 주소에서 확인할 수 있습니다.
 | `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
 | `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `DELIVERY_DRY_RUN` | 발송 채널 설정 |
 
+실제 외부 데이터/RAG 적재를 실행하려면 사용자가 `.env`에 다음 값을 준비합니다. 키가 비어 있어도 local/test는 mock 또는 빈 결과로 동작합니다.
+
+| 준비 항목 | 필요 시점 |
+| --- | --- |
+| `FRED_API_KEY` | FRED 실제 지표 수집 |
+| `ECOS_API_KEY` | 한국은행 ECOS 실제 통계 수집 |
+| `NEWS_RSS_URLS` | 뉴스 RSS 실제 수집. 콤마 구분 URL 목록 |
+| `UPSTAGE_API_KEY` | 뉴스 passage/query embedding 실제 생성 |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase DB 적재 |
+
 ## 검증
 
 ```powershell
 python -m compileall app
-python -m pytest tests\test_health.py tests\test_settings.py tests\test_schema_contracts.py tests\test_repositories_memory.py tests\test_repositories_supabase.py -q
+python -m pytest -q
 ```
 
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest`: health/settings/schema/repository 기준 통과
+- `python -m pytest -q`: health/settings/schema/repository/data source/news/embedding 기준 통과
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙

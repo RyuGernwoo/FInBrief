@@ -13,6 +13,8 @@ from typing import Any
 
 from app.core.schemas import (
     CardArtifact,
+    IndicatorValue,
+    NewsDocument,
     NewsEvidence,
     Subscription,
     Topic,
@@ -93,6 +95,66 @@ def _topic_tags(topic: Topic) -> list[str]:
     for mapping in topic.source_mapping:
         tags.extend(mapping.news_keywords)
     return sorted(set(tags))
+
+
+def build_indicator_row(
+    *,
+    indicator_id: str,
+    name: str,
+    source: str,
+    value_date: str,
+    current_value: float,
+    previous_value: float | None = None,
+    change_value: float | None = None,
+    change_percent: float | None = None,
+    unit: str | None = None,
+    missing: bool = False,
+    raw_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if previous_value not in (None, 0) and change_value is None:
+        change_value = current_value - previous_value
+    if previous_value not in (None, 0) and change_percent is None:
+        change_percent = (current_value - previous_value) / previous_value * 100
+    return {
+        "indicator_id": indicator_id,
+        "name": name,
+        "source": source,
+        "value_date": value_date,
+        "current_value": current_value,
+        "previous_value": previous_value,
+        "change_value": change_value,
+        "change_percent": change_percent,
+        "unit": unit,
+        "missing": missing,
+        "raw_payload": raw_payload or {},
+    }
+
+
+def indicator_value_to_row(value: IndicatorValue) -> dict[str, Any]:
+    return build_indicator_row(
+        indicator_id=value.indicator_id,
+        name=value.name,
+        source=value.source,
+        value_date=value.value_date.isoformat(),
+        current_value=value.current_value,
+        previous_value=value.previous_value,
+        change_value=value.change_value,
+        change_percent=value.change_percent,
+        unit=value.unit,
+        missing=value.missing,
+    )
+
+
+def build_news_document_row(document: NewsDocument) -> dict[str, Any]:
+    return {
+        "source": document.source,
+        "title": document.title,
+        "url": str(document.url),
+        "published_at": document.published_at.isoformat(),
+        "summary": document.summary,
+        "tags": document.tags,
+        "raw_payload": {"news_id": document.news_id},
+    }
 
 
 class SupabaseTopicRepository:
@@ -242,6 +304,53 @@ class SupabaseCardRepository:
             },
             on_conflict="topic_id,run_date",
         ).execute()
+
+
+class SupabaseIngestionRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def upsert_indicator_values(self, values: Sequence[IndicatorValue]) -> Any:
+        payload = [indicator_value_to_row(value) for value in values]
+        if not payload:
+            return []
+        response = self._client.table("indicator_values").upsert(
+            payload,
+            on_conflict="indicator_id,value_date,source",
+        ).execute()
+        return _response_data(response)
+
+    def upsert_news_documents(self, documents: Sequence[NewsDocument]) -> Any:
+        payload = [build_news_document_row(document) for document in documents]
+        if not payload:
+            return []
+        response = self._client.table("news_documents").upsert(
+            payload,
+            on_conflict="url",
+        ).execute()
+        return _response_data(response)
+
+    def upsert_news_embeddings(self, embeddings: Sequence[dict[str, Any]]) -> Any:
+        payload: list[dict[str, Any]] = []
+        for row in embeddings:
+            embedding = [float(value) for value in row["embedding"]]
+            if len(embedding) != 4096:
+                raise ValueError(f"embedding dimension must be 4096, got {len(embedding)}")
+            payload.append(
+                {
+                    "news_id": row["news_id"],
+                    "embedding": embedding,
+                    "embedding_model": row["embedding_model"],
+                    "embedding_kind": row.get("embedding_kind", "passage"),
+                }
+            )
+        if not payload:
+            return []
+        response = self._client.table("news_embeddings").upsert(
+            payload,
+            on_conflict="news_id,embedding_model,embedding_kind",
+        ).execute()
+        return _response_data(response)
 
 
 class SupabaseNewsRepository:
