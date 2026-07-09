@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 from langgraph.types import Send
@@ -12,6 +13,17 @@ from . import fixtures as fx
 from .card_schema import CardContent
 from .render import render_card
 from app.core import llm
+from app.tools import image_gen
+
+
+_IMG_OUT = os.path.join(os.path.dirname(__file__), "out_llm")
+
+IMAGE_PROMPT_SYSTEM = (
+    "You are an image-prompt writer for a financial card news. "
+    "Given the card info, output ONE english image prompt as JSON {\"prompt\": \"...\"}. "
+    "Style: clean isometric illustration, muted palette. "
+    "The illustration MUST contain no text, no letters, no numbers."
+)
 
 
 # ---- 공유 단계 (main graph) ----
@@ -87,12 +99,25 @@ def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
     return card.model_dump()
 
 
+def _fallback_prompt(content: dict) -> str:
+    return (f"clean isometric illustration about {content.get('subtitle', '')}, "
+            f"muted palette, no text, no letters, no numbers")
+
+
 def _gen_image_prompt(content: dict) -> str:
-    return f"{content['subtitle']} illustration, muted palette, no text"
+    if llm.use_llm():
+        try:
+            user = f"topic: {content.get('subtitle')}\nheadline: {content.get('headline')}\nbody: {content.get('body')}"
+            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user)
+            return raw.get("prompt") or _fallback_prompt(content)
+        except Exception:
+            return _fallback_prompt(content)
+    return _fallback_prompt(content)
 
 
-def _generate_image(prompt: str) -> str | None:
-    return None  # Phase 2: Nano Banana
+def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
+    asset = image_gen.generate_image(prompt, _IMG_OUT, f"{run_date}_{topic_id}")
+    return asset.path if asset else None
 
 
 def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
@@ -102,8 +127,12 @@ def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
     return render_card(content, path)
 
 
+def _nums(s: str) -> list[str]:
+    return re.findall(r"-?\d+\.?\d*", s or "")
+
+
 def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
-    issues = []
+    issues: list[str] = []
     if not content.get("source"):
         issues.append("no-source")
     if not content.get("body"):
@@ -112,6 +141,19 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
         issues.append("headline-overflow")
     if len(content.get("lead", "")) > 45:
         issues.append("lead-overflow")
+    # 관련성: 카테고리 유효
+    if content.get("category") not in ("MARKET", "GLOBAL", "DOMESTIC", "CRYPTO", "FX"):
+        issues.append("bad-category")
+    # 정확성: lead/body 숫자가 지표값/변화율과 근사 일치
+    text = f"{content.get('lead', '')} {content.get('body', '')}"
+    found = [float(x) for x in _nums(text) if x not in ("", "-", ".")]
+    targets = [t for t in (data.get("value"), data.get("change_pct")) if t is not None]
+
+    def _close(f: float, t: float) -> bool:
+        return abs(f - t) <= max(0.02 * abs(t), 0.01)
+
+    if found and targets and not any(_close(f, t) for f in found for t in targets):
+        issues.append("number-mismatch")
     return (len(issues) == 0, issues)
 
 
@@ -122,10 +164,12 @@ def build_card(state: BriefState) -> dict:
         data = _fetch_data(topic)
         news = _retrieve_news(topic)
         content = _analyze(topic, data, news)
-        content["image_url"] = _generate_image(_gen_image_prompt(content))
+        img_prompt = _gen_image_prompt(content)
+        content["image_url"] = _generate_image(img_prompt, topic["topic_id"], run_date)
         out_path = _compose_card(content, topic["topic_id"], run_date)
         ok, issues = _verify(content, data)
-        card = {**content, "topic_id": topic["topic_id"], "image_path": out_path, "rendered": True, "verified": ok}
+        card = {**content, "topic_id": topic["topic_id"], "image_path": out_path,
+                "image_prompt": img_prompt, "rendered": True, "verified": ok}
         result = {"cards": [card]}
         if not ok:
             result["errors"] = [{"code": "verify", "message": ",".join(issues), "node": "verify", "topic": topic["topic_id"]}]
