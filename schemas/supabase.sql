@@ -1,6 +1,9 @@
 -- FinBrief Supabase schema for PostgreSQL + pgvector.
 -- MVP scope: subscriptions, indicators, news RAG, card cache, delivery logs, eval logs.
+-- RAG decision: Upstage Solar solar-embedding-1-large uses 4096 dimensions.
+-- Keep search as exact cosine scan after date/tag filtering for the MVP.
 
+create extension if not exists pgcrypto;
 create extension if not exists vector;
 
 create table if not exists users (
@@ -59,7 +62,7 @@ create table if not exists news_documents (
     url text not null unique,
     published_at timestamptz not null,
     summary text,
-    tags text[] not null default '{}',
+    tags text[] not null default '{}'::text[],
     raw_payload jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now()
 );
@@ -67,10 +70,11 @@ create table if not exists news_documents (
 create table if not exists news_embeddings (
     id uuid primary key default gen_random_uuid(),
     news_id uuid not null references news_documents(id) on delete cascade,
-    embedding vector(1536),
+    embedding vector(4096) not null,
     embedding_model text not null,
+    embedding_kind text not null default 'passage' check (embedding_kind in ('passage', 'query')),
     created_at timestamptz not null default now(),
-    unique (news_id, embedding_model)
+    unique (news_id, embedding_model, embedding_kind)
 );
 
 create table if not exists cards (
@@ -120,12 +124,43 @@ create index if not exists idx_indicator_values_date
 create index if not exists idx_news_documents_published_at
     on news_documents(published_at desc);
 
+create index if not exists idx_news_documents_tags
+    on news_documents using gin(tags);
+
 create index if not exists idx_cards_topic_date
     on cards(topic_id, run_date);
 
 create index if not exists idx_deliveries_run_status
     on deliveries(run_id, status);
 
-create index if not exists idx_news_embeddings_vector
-    on news_embeddings using ivfflat (embedding vector_cosine_ops)
-    with (lists = 100);
+create or replace function match_news(
+    query_embedding vector(4096),
+    topic_tags text[] default '{}'::text[],
+    since timestamptz default now() - interval '2 days',
+    match_count int default 5
+) returns table (
+    news_id uuid,
+    title text,
+    source text,
+    url text,
+    published_at timestamptz,
+    summary text,
+    similarity float
+)
+language sql stable as $$
+    select
+        d.id,
+        d.title,
+        d.source,
+        d.url,
+        d.published_at,
+        d.summary,
+        1 - (e.embedding <=> query_embedding) as similarity
+    from news_embeddings e
+    join news_documents d on d.id = e.news_id
+    where e.embedding_kind = 'passage'
+      and d.published_at >= since
+      and (cardinality(topic_tags) = 0 or d.tags && topic_tags)
+    order by e.embedding <=> query_embedding
+    limit match_count;
+$$;

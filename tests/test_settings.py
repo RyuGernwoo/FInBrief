@@ -24,6 +24,20 @@ def test_settings_support_environment_overrides(monkeypatch):
     assert settings.enable_mock_data is False
 
 
+def test_settings_parse_news_rss_urls_from_comma_separated_env(monkeypatch):
+    monkeypatch.setenv(
+        "NEWS_RSS_URLS",
+        "https://example.com/rss, https://news.example.com/feed",
+    )
+
+    settings = Settings()
+
+    assert settings.news_rss_urls == [
+        "https://example.com/rss",
+        "https://news.example.com/feed",
+    ]
+
+
 def test_settings_reject_api_prefix_without_leading_slash():
     try:
         Settings(api_v1_prefix="api/v1")
