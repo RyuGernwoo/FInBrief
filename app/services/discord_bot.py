@@ -12,6 +12,24 @@ from app.services.chatbot import handle
 from app.services.subscription_service import SubscriptionService
 from app.services._repo_stub import StubTopics, StubUsers, StubSubs  # Phase 4에서 실 repository로 교체
 
+
+def _load_dotenv() -> None:
+    """의존성 없이 repo 루트 .env 를 os.environ 로 로드(이미 설정된 값은 유지)."""
+    env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                os.environ.setdefault(key.strip(), value.strip())
+    except FileNotFoundError:
+        pass
+
+
+_load_dotenv()
+
 # MVP 카탈로그(실제는 TopicRepository.list_catalog). 챗봇 화이트리스트 = 이 목록.
 CATALOG = [
     {"topic_id": "usdkrw", "name": "원/달러 환율"},
