@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import date
 from typing import Any
 
 from langgraph.types import Send
@@ -13,10 +14,13 @@ from . import fixtures as fx
 from .card_schema import CardContent
 from .render import render_card
 from app.core import llm
+from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
+from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
 from app.tools import image_gen
 
 
 _DIR = os.path.dirname(__file__)
+DISCLAIMER = "본 브리핑은 투자 조언이 아닌 참고용 정보입니다."
 
 IMAGE_PROMPT_SYSTEM = (
     "You are an image-prompt writer for a financial card news. "
@@ -38,8 +42,76 @@ def collect_indicators(state: BriefState) -> dict[str, Any]:
     return {"indicators": indicators, "report_url": None}
 
 
+def _topic_category(topic: Topic) -> str:
+    if topic.type == "asset" and topic.normalized_name == "btc":
+        return "CRYPTO"
+    if topic.type == "indicator" and any(token in topic.normalized_name for token in ("usd", "krw", "fx")):
+        return "FX"
+    if topic.type == "indicator":
+        return "GLOBAL"
+    return "MARKET"
+
+
+def _graph_topic(topic: Topic) -> dict[str, Any]:
+    return {
+        "topic_id": topic.topic_id,
+        "source_key": topic.normalized_name,
+        "name": topic.name,
+        "category": _topic_category(topic),
+    }
+
+
+def _value(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _topic_source_key(topic: dict[str, Any]) -> str:
+    topic_id = str(topic.get("topic_id", ""))
+    return str(topic.get("source_key") or topic.get("normalized_name") or topic_id.removeprefix("topic_"))
+
+
+def _parse_run_date(value: Any) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
 def collect_topics(state: BriefState) -> dict[str, Any]:
     """[나] 구독 토픽 → 고유 집합(dedup)."""
+    repos: RepositoryBundle | None = state.get("repositories")
+    if repos is not None:
+        subscriptions = repos.subscriptions.list_active()
+        seen: set[str] = set()
+        topics: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+
+        for subscription in subscriptions:
+            topic_id = subscription.topic_id
+            if topic_id in seen:
+                continue
+            try:
+                topics.append(_graph_topic(repos.topics.get(topic_id)))
+                seen.add(topic_id)
+            except RepositoryNotFoundError as exc:
+                errors.append(
+                    {
+                        "code": exc.code,
+                        "message": str(exc),
+                        "node": "collect_topics",
+                        "topic": topic_id,
+                    }
+                )
+
+        result: dict[str, Any] = {
+            "subscriptions": [item.model_dump(mode="json") for item in subscriptions],
+            "unique_topics": topics,
+        }
+        if errors:
+            result["errors"] = errors
+        return result
+
     seen, uniq = set(), []
     for sub in fx.FIXTURE_SUBSCRIPTIONS:
         tid = sub["topic_id"]
@@ -49,18 +121,129 @@ def collect_topics(state: BriefState) -> dict[str, Any]:
     return {"unique_topics": uniq}
 
 
-def dispatch(state: BriefState) -> list[Send]:
+def dispatch(state: BriefState) -> list[Send] | str:
     """[나] Send API로 토픽마다 build_card 병렬 실행 (FanOut)."""
+    topics = state.get("topics_to_generate")
+    if topics is None:
+        topics = state.get("unique_topics", [])
+    if not topics:
+        return "aggregate_cards"
     return [Send("build_card", {"topic": t, "run_date": state.get("run_date"), "run_id": state.get("run_id")})
-            for t in state["unique_topics"]]
+            for t in topics]
+
+
+def _card_from_artifact(card: CardArtifact) -> dict[str, Any]:
+    return {
+        "card_id": card.card_id,
+        "topic_id": card.topic_id,
+        "category": "MARKET",
+        "index_no": "00",
+        "subtitle": card.title,
+        "headline": card.analysis.headline,
+        "lead": card.analysis.summary,
+        "body": " ".join(card.analysis.key_points),
+        "source": "FinBrief",
+        "evidence": [item.model_dump(mode="json") for item in card.analysis.evidence],
+        "disclaimer": card.analysis.disclaimer,
+        "image_url": card.image_url,
+        "image_path": card.image_url,
+        "image_prompt": None,
+        "rendered": bool(card.image_url),
+        "verified": True,
+        "cached": True,
+    }
+
+
+def _artifact_from_card(card: dict[str, Any], run_date: date) -> CardArtifact:
+    topic_id = str(card["topic_id"])
+    headline = str(card.get("headline") or card.get("subtitle") or topic_id)
+    summary = str(card.get("lead") or card.get("body") or headline)
+    key_points = [
+        str(item)
+        for item in (card.get("lead"), card.get("body"))
+        if item
+    ] or [summary]
+    evidence: list[NewsEvidence] = []
+    for item in card.get("evidence", []):
+        try:
+            evidence.append(NewsEvidence.model_validate(item))
+        except Exception:
+            continue
+
+    return CardArtifact(
+        card_id=str(card.get("card_id") or f"card_{topic_id}_{run_date.strftime('%Y%m%d')}"),
+        topic_id=topic_id,
+        run_date=run_date,
+        title=headline,
+        image_url=card.get("image_url") or card.get("image_path"),
+        analysis=TopicAnalysis(
+            topic_id=topic_id,
+            run_date=run_date,
+            headline=headline,
+            summary=summary,
+            key_points=key_points,
+            evidence=evidence,
+            disclaimer=str(card.get("disclaimer") or DISCLAIMER),
+        ),
+        cached=bool(card.get("cached", False)),
+    )
+
+
+def load_cached_cards(state: BriefState) -> dict[str, Any]:
+    repos: RepositoryBundle | None = state.get("repositories")
+    topics = state.get("unique_topics", [])
+    if repos is None:
+        return {"topics_to_generate": topics, "cached_cards": [], "reused_count": 0}
+
+    run_date = _parse_run_date(state["run_date"])
+    cached_cards: list[dict[str, Any]] = []
+    topics_to_generate: list[dict[str, Any]] = []
+
+    for topic in topics:
+        cached = repos.cards.get(topic["topic_id"], run_date)
+        if cached is None:
+            topics_to_generate.append(topic)
+        else:
+            cached_cards.append(_card_from_artifact(cached.model_copy(update={"cached": True})))
+
+    return {
+        "cards": cached_cards,
+        "cached_cards": cached_cards,
+        "topics_to_generate": topics_to_generate,
+        "reused_count": len(cached_cards),
+    }
+
+
+def persist_cards(state: BriefState) -> dict[str, Any]:
+    repos: RepositoryBundle | None = state.get("repositories")
+    if repos is None:
+        return {}
+
+    run_date = _parse_run_date(state["run_date"])
+    errors: list[dict[str, Any]] = []
+    for card in state.get("cards", []):
+        if card.get("cached"):
+            continue
+        try:
+            repos.cards.upsert(_artifact_from_card(card, run_date))
+        except Exception as exc:
+            errors.append(
+                {
+                    "code": "card_cache_upsert",
+                    "message": str(exc),
+                    "node": "persist_cards",
+                    "topic": card.get("topic_id"),
+                }
+            )
+    return {"errors": errors} if errors else {}
 
 
 # ---- 토픽별 카드 생성 서브그래프 (build_card 안에서 순차 호출) ----
 def _fetch_data(topic: dict) -> dict:            # [팀원]
-    return fx.FIXTURE_INDICATORS.get(topic["topic_id"], {})
+    return fx.FIXTURE_INDICATORS.get(topic["topic_id"], fx.FIXTURE_INDICATORS.get(_topic_source_key(topic), {}))
 
 def _retrieve_news(topic: dict) -> list[dict]:   # [팀원] RAG(match_news) → NewsEvidence[]
-    return fx.FIXTURE_NEWS.get(topic["topic_id"], [])
+    return fx.FIXTURE_NEWS.get(topic["topic_id"], fx.FIXTURE_NEWS.get(_topic_source_key(topic), []))
 
 def _clip(s, n: int) -> str:
     s = str(s).strip()
@@ -172,8 +355,9 @@ def build_card(state: BriefState) -> dict:
         content["image_url"] = _generate_image(img_prompt, topic["topic_id"], run_date)
         out_path = _compose_card(content, topic["topic_id"], run_date)
         ok, issues = _verify(content, data)
-        card = {**content, "topic_id": topic["topic_id"], "image_path": out_path,
-                "image_prompt": img_prompt, "rendered": True, "verified": ok}
+        card = {**content, "card_id": f"card_{topic['topic_id']}_{run_date.replace('-', '')}",
+                "topic_id": topic["topic_id"], "image_path": out_path,
+                "image_prompt": img_prompt, "rendered": True, "verified": ok, "cached": False}
         result = {"cards": [card]}
         if not ok:
             result["errors"] = [{"code": "verify", "message": ",".join(issues), "node": "verify", "topic": topic["topic_id"]}]
@@ -184,17 +368,30 @@ def build_card(state: BriefState) -> dict:
 
 # ---- 집계 · 발송 ----
 def aggregate_cards(state: BriefState) -> dict[str, Any]:  # [나]
-    n_cards, n_err = len(state.get("cards", [])), len(state.get("errors", []))
+    cards = state.get("cards", [])
+    n_cards, n_err = len(cards), len(state.get("errors", []))
     status = "completed" if n_err == 0 else ("partial_success" if n_cards else "failed")
-    return {"status": status}
+    generated_count = len([card for card in cards if not card.get("cached")])
+    reused_count = len([card for card in cards if card.get("cached")])
+    return {
+        "status": status,
+        "generated_count": generated_count,
+        "reused_count": reused_count,
+        "trace_id": state.get("trace_id") or f"local_mock_trace_{state.get('run_id', 'run')}",
+    }
 
 
 def deliver(state: BriefState) -> dict[str, Any]:  # [나] 추후 notifier(Discord/Slack)
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
+    subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     deliveries = []
-    for sub in fx.FIXTURE_SUBSCRIPTIONS:
-        card = by_topic.get(sub["topic_id"])
-        deliveries.append({"delivery_id": f"{sub['user_id']}:{sub['topic_id']}",
-                           "user_id": sub["user_id"], "channel": sub["channel"], "topic_id": sub["topic_id"],
+    for sub in subscriptions:
+        topic_id = _value(sub, "topic_id")
+        user_id = _value(sub, "user_id")
+        channel = _value(sub, "channel")
+        card = by_topic.get(topic_id)
+        deliveries.append({"delivery_id": f"{user_id}:{topic_id}",
+                           "user_id": user_id, "channel": channel, "topic_id": topic_id,
+                           "card_id": card.get("card_id") if card else None,
                            "status": "sent" if card else "skipped", "attempts": 1})
     return {"deliveries": deliveries}
