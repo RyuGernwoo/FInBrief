@@ -14,6 +14,7 @@ from . import fixtures as fx
 from . import rag
 from .card_schema import CardContent
 from .render import render_card
+from .report_render import render_market_report_image
 from app.core import llm
 from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
 from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
@@ -143,6 +144,29 @@ def collect_indicators(state: BriefState) -> dict[str, Any]:
     if missing:
         result["missing_indicators"] = missing
     return result
+
+
+def build_report_image(state: BriefState) -> dict[str, Any]:
+    """전체 주요 지표 리포트 이미지를 한 번 생성하고 report_url에 기록한다."""
+    try:
+        run_date = _parse_run_date(state["run_date"])
+        report_url = render_market_report_image(
+            state.get("indicators", []),
+            run_date=run_date,
+            missing_indicators=state.get("missing_indicators", []),
+        )
+        return {"report_url": report_url}
+    except Exception as exc:
+        return {
+            "errors": [
+                {
+                    "code": "report_image_render",
+                    "message": str(exc),
+                    "node": "build_report_image",
+                    "topic": None,
+                }
+            ]
+        }
 
 
 def _topic_category(topic: Topic) -> str:
@@ -543,7 +567,7 @@ def deliver(state: BriefState) -> dict[str, Any]:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
-        channel_id = _value(sub, "discord_channel_id")
+        channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
         card = by_topic.get(topic_id)
 
         base = {

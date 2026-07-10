@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.api.dependencies import reset_repository_bundle_cache
 from app.core.config import Settings
@@ -11,6 +14,7 @@ def _client(monkeypatch, tmp_path) -> TestClient:
     monkeypatch.setenv("FINBRIEF_IMAGE_STUB", "1")
     monkeypatch.setenv("FINBRIEF_OUT", str(tmp_path / "cards"))
     monkeypatch.setenv("FINBRIEF_IMG_OUT", str(tmp_path / "images"))
+    monkeypatch.setenv("FINBRIEF_REPORT_OUT", str(tmp_path / "reports"))
     return TestClient(create_app(Settings(app_env="test", enable_mock_data=True)))
 
 
@@ -35,6 +39,12 @@ def test_run_report_endpoint_generates_cards_for_subscriptions(monkeypatch, tmp_
     assert payload["delivery_results"] == 1
     assert payload["trace_id"].startswith("local_mock_trace_")
     assert "투자 조언이 아닌" in payload["disclaimer"]
+    assert payload["report_url"]
+    report_path = Path(payload["report_url"])
+    assert report_path.exists()
+    with Image.open(report_path) as image:
+        assert image.format == "PNG"
+        assert image.size == (1080, 1080)
 
 
 def test_cards_today_returns_user_subscription_cards(monkeypatch, tmp_path):
@@ -75,3 +85,4 @@ def test_reports_today_returns_latest_mock_report(monkeypatch, tmp_path):
     assert payload["status"] == "completed"
     assert payload["generated_cards"] == 1
     assert "투자 조언이 아닌" in payload["disclaimer"]
+    assert payload["report_url"]

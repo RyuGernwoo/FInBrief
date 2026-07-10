@@ -44,6 +44,7 @@ def _summary(
         "reused_cards": reused,
         "delivery_results": len(result.delivery_results),
         "trace_id": result.trace_id,
+        "report_url": result.report.report_url if result.report else None,
         "disclaimer": result.report.disclaimer if result.report else DISCLAIMER,
         "errors": result.errors,
     }
