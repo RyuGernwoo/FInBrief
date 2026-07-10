@@ -62,6 +62,7 @@ def _subscription_from_row(row: dict[str, Any]) -> Subscription:
             "topic_id": str(row["topic_id"]),
             "channel": row["channel"],
             "active": row.get("active", True),
+            "discord_channel_id": row.get("discord_channel_id"),
             "created_at": row.get("created_at"),
         }
     )
@@ -223,7 +224,8 @@ class SupabaseSubscriptionRepository:
         )
         return [_subscription_from_row(row) for row in _response_data(response)]
 
-    def add(self, user_id: str, topic_id: str, channel: str) -> Subscription:
+    def add(self, user_id: str, topic_id: str, channel: str,
+            channel_id: str | None = None) -> Subscription:
         active = self.list_by_user(user_id)
         active_topic_ids = {item.topic_id for item in active}
         user_response = self._client.table("users").select("*").eq("id", user_id).execute()
@@ -242,6 +244,7 @@ class SupabaseSubscriptionRepository:
                     "topic_id": topic_id,
                     "channel": channel,
                     "active": True,
+                    "discord_channel_id": channel_id,
                 },
                 on_conflict="user_id,topic_id,channel",
             )

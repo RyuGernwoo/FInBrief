@@ -89,7 +89,8 @@ class MemorySubscriptionRepository:
             if item.user_id == user_id and item.active
         ]
 
-    def add(self, user_id: str, topic_id: str, channel: str) -> Subscription:
+    def add(self, user_id: str, topic_id: str, channel: str,
+            channel_id: str | None = None) -> Subscription:
         user = self._users.get(user_id)
         active_topic_ids = {item.topic_id for item in self.list_by_user(user_id)}
         key = (user_id, topic_id, channel)
@@ -109,6 +110,7 @@ class MemorySubscriptionRepository:
             topic_id=topic_id,
             channel=channel,
             active=True,
+            discord_channel_id=channel_id,
         )
         self._subscriptions[key] = subscription
         return subscription
