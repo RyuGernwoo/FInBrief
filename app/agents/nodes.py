@@ -14,6 +14,7 @@ from .card_schema import CardContent
 from .render import render_card
 from app.core import llm
 from app.tools import image_gen
+from app.services import notifier
 
 
 _DIR = os.path.dirname(__file__)
@@ -189,12 +190,22 @@ def aggregate_cards(state: BriefState) -> dict[str, Any]:  # [나]
     return {"status": status}
 
 
-def deliver(state: BriefState) -> dict[str, Any]:  # [나] 추후 notifier(Discord/Slack)
+def _webhook_for(channel: str) -> str:
+    return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
+
+
+def deliver(state: BriefState) -> dict[str, Any]:
+    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     deliveries = []
-    for sub in fx.FIXTURE_SUBSCRIPTIONS:
+    for sub in fx.FIXTURE_SUBSCRIPTIONS:   # Phase 4에서 subscriptions repo 로 교체
         card = by_topic.get(sub["topic_id"])
-        deliveries.append({"delivery_id": f"{sub['user_id']}:{sub['topic_id']}",
-                           "user_id": sub["user_id"], "channel": sub["channel"], "topic_id": sub["topic_id"],
-                           "status": "sent" if card else "skipped", "attempts": 1})
+        base = {"delivery_id": f"{sub['user_id']}:{sub['topic_id']}", "user_id": sub["user_id"],
+                "channel": sub["channel"], "topic_id": sub["topic_id"]}
+        if not card:
+            deliveries.append({**base, "status": "skipped", "attempts": 0})
+            continue
+        res = notifier.send_card(channel=sub["channel"], webhook_url=_webhook_for(sub["channel"]),
+                                 text=notifier.format_card_text(card), image_path=card.get("image_path"))
+        deliveries.append({**base, "status": res["status"], "attempts": 1})
     return {"deliveries": deliveries}
