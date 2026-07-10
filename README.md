@@ -2,7 +2,7 @@
 
 FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 에이전트입니다. 매일 아침 주요 거시 금융 지표와 경제 뉴스를 수집하고, 전체 시장 리포트와 사용자 관심 토픽별 카드뉴스를 생성한 뒤 Discord 또는 Slack으로 전달하는 것을 MVP 목표로 합니다.
 
-현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구가 준비되어 있습니다. 다음 단계에서는 구독 API와 LangGraph mock 파이프라인을 연결합니다.
+현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구, 구독 API, repository 기반 LangGraph mock 리포트/카드 생성 파이프라인이 준비되어 있습니다.
 
 ## 현재 구현 상태
 
@@ -21,8 +21,10 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | Upstage embedding 입력/검증 도구 | 완료 |
 | Supabase ingestion payload adapter | 완료 |
 | 기본 테스트 | 완료 |
-| 구독 API | 예정 |
-| LangGraph 리포트/카드 생성 파이프라인 | 예정 |
+| 구독 API | 완료 |
+| LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
+| topic+date 카드 캐시 | 완료(mock) |
+| report/card 조회 API | 완료(mock) |
 | LiteLLM/Langfuse 실제 연동 | 예정 |
 | Discord/Slack 실제 발송 | 예정 |
 
@@ -88,7 +90,13 @@ ref/              원본 참고 문서
 | --- | --- |
 | `app/main.py` | FastAPI 앱 팩토리와 루트 엔드포인트 |
 | `app/api/router.py` | API v1 라우터 집계 |
+| `app/api/dependencies.py` | FastAPI dependency와 repository bundle provider |
 | `app/api/routes_health.py` | health endpoint |
+| `app/api/routes_subscriptions.py` | 토픽 catalog·키워드 매칭(`POST /topics/match`)과 구독 추가/조회/삭제 API |
+| `app/api/routes_reports.py` | 수동 mock 리포트 실행과 최신 리포트 조회 API |
+| `app/api/routes_cards.py` | 사용자별 오늘의 카드 조회 API |
+| `app/agents/pipeline.py` | API에서 LangGraph를 실행하는 service wrapper |
+| `app/agents/graph.py`, `app/agents/nodes.py` | repository 구독 기반 mock 리포트/카드 생성 graph |
 | `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
 | `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
 | `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
@@ -100,9 +108,9 @@ ref/              원본 참고 문서
 | `app/tools/news/rss.py` | RSS entry 정규화, 중복 제거, 최신 뉴스 필터링 |
 | `app/tools/news/tagging.py` | 토픽 `news_keywords` 기반 뉴스 태깅 |
 | `app/tools/embedding/upstage.py` | passage/query embedding 입력 생성과 4096차원 검증 |
-| `data/default_topics.json` | MVP 기본 토픽 5개 fixture |
+| `data/default_topics.json` | 기본 토픽 카탈로그 fixture (지표/자산/섹터/키워드 100+개) |
 | `schemas/supabase.sql` | Supabase PostgreSQL + pgvector 테이블 구조 |
-| `schemas/seed_topics.sql` | 기본 토픽 seed SQL |
+| `schemas/seed_topics.sql` | 기본 토픽 카탈로그 seed SQL (`data/default_topics.json`과 동기화) |
 | `schemas/finbrief_state.schema.json` | LangGraph morning pipeline state 계약 |
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
@@ -148,6 +156,23 @@ API 문서는 서버 실행 후 다음 주소에서 확인할 수 있습니다.
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
 
+구독과 mock 리포트/card 흐름은 다음 순서로 수동 확인할 수 있습니다.
+
+```powershell
+curl http://127.0.0.1:8000/api/v1/topics
+curl -X POST http://127.0.0.1:8000/api/v1/topics/match `
+  -H "Content-Type: application/json" `
+  -d "{\"query\":\"AI 반도체\",\"limit\":5}"
+curl -X POST http://127.0.0.1:8000/api/v1/subscriptions/u_001/topics `
+  -H "Content-Type: application/json" `
+  -d "{\"topic_id\":\"topic_btc\",\"channel\":\"discord\"}"
+curl http://127.0.0.1:8000/api/v1/subscriptions/u_001
+curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
+  -H "Content-Type: application/json" `
+  -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true}"
+curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10"
+```
+
 ## 환경변수
 
 기본값은 `.env.example`에 정리되어 있습니다. 실제 secret은 `.env`에만 입력하고 Git에 커밋하지 않습니다.
@@ -183,7 +208,7 @@ python -m pytest -q
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest -q`: health/settings/schema/repository/data source/news/embedding 기준 통과
+- `python -m pytest -q`: 48 passed
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙
@@ -196,8 +221,8 @@ python -m pytest -q
 
 ## 다음 작업
 
-1. 구독 API 구현: 토픽 추가/조회/삭제, free tier 제한
-2. LangGraph mock pipeline 연결: 리포트 생성, 카드 생성, 캐시 흐름
-3. 지표/news seed와 report run endpoint 연결
-4. Discord/Slack dry-run 발송 로그 추가
-5. LiteLLM, Langfuse, 자동 평가 scaffold 연결
+1. LiteLLM 실제 분석 경로와 fallback metadata 정리
+2. Langfuse trace 기록 연결
+3. Discord/Slack webhook dry-run adapter와 실제 발송 로그 추가
+4. 관리 챗봇 명령 parsing 연결
+5. 자동 평가 scaffold와 safety 검증 연결

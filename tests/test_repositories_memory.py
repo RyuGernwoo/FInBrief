@@ -12,7 +12,7 @@ def test_memory_repositories_load_default_topic_catalog():
 
     topics = repos.topics.list_catalog()
 
-    assert len(topics) == 5
+    assert len(topics) >= 100
     assert repos.topics.get_by_normalized_name("semi").name == "반도체"
     assert any(
         "반도체" in mapping.news_keywords
@@ -25,11 +25,11 @@ def test_memory_subscriptions_enforce_free_tier_limit():
     user = repos.users.get_or_create("discord", "u_001")
     topic_ids = [topic.topic_id for topic in repos.topics.list_catalog()]
 
-    for topic_id in topic_ids:
+    for topic_id in topic_ids[: user.max_topics]:
         repos.subscriptions.add(user.user_id, topic_id, "discord")
 
     with pytest.raises(TopicLimitExceededError) as exc_info:
-        repos.subscriptions.add(user.user_id, "topic_extra", "discord")
+        repos.subscriptions.add(user.user_id, topic_ids[user.max_topics], "discord")
 
     assert exc_info.value.code == "TOPIC_LIMIT_EXCEEDED"
     assert len(repos.subscriptions.list_by_user(user.user_id)) == user.max_topics

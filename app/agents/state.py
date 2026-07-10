@@ -20,7 +20,13 @@ class BriefState(TypedDict, total=False):
     indicators: list[dict[str, Any]]
     missing_indicators: list[str]
     top_news: list[dict[str, Any]]
+    repositories: Any
+    subscriptions: list[dict[str, Any]]
     unique_topics: list[dict[str, Any]]
+    topics_to_generate: list[dict[str, Any]]
+    cached_cards: list[dict[str, Any]]
+    generated_count: int
+    reused_count: int
     # FanOut 병합 (리듀서)
     cards: Annotated[list[dict[str, Any]], operator.add]
     deliveries: Annotated[list[dict[str, Any]], operator.add]
