@@ -21,7 +21,7 @@ class SubscriptionService:
     def _allowed(self) -> set[str]:
         return {t["topic_id"] for t in self.topics.list_catalog()}
 
-    def add(self, channel, ext_user_id, topic_id):
+    def add(self, channel, ext_user_id, topic_id, channel_id=None):
         if topic_id not in self._allowed():
             raise TopicNotAllowed(topic_id)
         u = self.users.get_or_create(channel, ext_user_id)
@@ -30,7 +30,7 @@ class SubscriptionService:
             return cur
         if len(cur) >= u["max_topics"]:
             raise MaxTopicsExceeded(u["max_topics"])
-        self.subs.add(u["id"], topic_id, channel)
+        self.subs.add(u["id"], topic_id, channel, channel_id)
         return self.subs.list(u["id"])
 
     def remove(self, channel, ext_user_id, topic_id):
