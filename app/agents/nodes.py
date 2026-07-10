@@ -543,7 +543,7 @@ def deliver(state: BriefState) -> dict[str, Any]:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
-        channel_id = _value(sub, "channel_id")
+        channel_id = _value(sub, "discord_channel_id")
         card = by_topic.get(topic_id)
 
         base = {
