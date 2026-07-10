@@ -59,7 +59,8 @@ tree = app_commands.CommandTree(client)
 async def finbrief(interaction: discord.Interaction, message: str):
     # LLM intent 파싱이 3초를 넘길 수 있어 먼저 defer(15분 확보), 블로킹 handle 은 스레드에서.
     await interaction.response.defer(ephemeral=True)  # "생각 중…" (본인만 보이게)
-    res = await asyncio.to_thread(handle, _service(), "discord", str(interaction.user.id), message)
+    res = await asyncio.to_thread(handle, _service(), "discord", str(interaction.user.id), message,
+                                  str(interaction.channel_id))  # 구독 시 이 채널로 카드 발송
     await interaction.followup.send(res["reply"], ephemeral=True)
 
 

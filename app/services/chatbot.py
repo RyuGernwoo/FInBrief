@@ -48,7 +48,8 @@ def _resp(intent, status, reply, topic=None):
     return {"intent": intent, "status": status, "reply": reply, "topic": topic}
 
 
-def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str) -> dict:
+def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str,
+           channel_id: str | None = None) -> dict:
     catalog = service.catalog()
     names = {t["topic_id"]: t["name"] for t in catalog}
     intent, topic = parse_intent(message, catalog)
@@ -64,7 +65,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         if not topic:
             return _resp(intent, "blocked", f"어떤 토픽을 구독할까요? 가능: {catalog_str}")
         try:
-            cur = service.add(channel, ext_user_id, topic)
+            cur = service.add(channel, ext_user_id, topic, channel_id)
             return _resp(intent, "completed", f"'{names[topic]}' 구독 완료 ✅ (현재 {len(cur)}개)", topic)
         except TopicNotAllowed:
             return _resp(intent, "blocked", f"'{topic}'는 지원하지 않는 토픽이에요. 가능: {catalog_str}")

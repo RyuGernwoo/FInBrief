@@ -397,6 +397,7 @@ def deliver(state: BriefState) -> dict[str, Any]:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
+        channel_id = _value(sub, "discord_channel_id")
         card = by_topic.get(topic_id)
         base = {"delivery_id": f"{user_id}:{topic_id}", "user_id": user_id,
                 "channel": channel, "topic_id": topic_id,
@@ -404,7 +405,13 @@ def deliver(state: BriefState) -> dict[str, Any]:
         if not card:
             deliveries.append({**base, "status": "skipped", "attempts": 0})
             continue
-        res = notifier.send_card(channel=channel, webhook_url=_webhook_for(channel),
-                                 text=notifier.format_card_text(card), image_path=card.get("image_path"))
+        text = notifier.format_card_text(card)
+        image_path = card.get("image_path")
+        if channel == "discord" and channel_id:
+            # 봇 토큰 직접 전송(웹훅 URL 불필요). channel_id 없으면 웹훅 폴백.
+            res = notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
+        else:
+            res = notifier.send_card(channel=channel, webhook_url=_webhook_for(channel),
+                                     text=text, image_path=image_path)
         deliveries.append({**base, "status": res["status"], "attempts": 1})
     return {"deliveries": deliveries}

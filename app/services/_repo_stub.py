@@ -18,7 +18,11 @@ class StubUsers:
 
 
 class StubSubs:
-    def __init__(self): self._s = {}
+    def __init__(self): self._s = {}; self._ch = {}
     def list(self, user_id): return sorted(self._s.get(user_id, set()))
-    def add(self, user_id, topic_id, channel): self._s.setdefault(user_id, set()).add(topic_id)
-    def remove(self, user_id, topic_id): self._s.get(user_id, set()).discard(topic_id)
+    def add(self, user_id, topic_id, channel, channel_id=None):
+        self._s.setdefault(user_id, set()).add(topic_id)
+        self._ch[(user_id, topic_id)] = channel_id
+    def remove(self, user_id, topic_id):
+        self._s.get(user_id, set()).discard(topic_id)
+        self._ch.pop((user_id, topic_id), None)
