@@ -14,6 +14,9 @@ def _prepare_offline_env(monkeypatch, tmp_path) -> None:
 
 def test_graph_collects_unique_topics_from_repository_subscriptions(monkeypatch, tmp_path):
     _prepare_offline_env(monkeypatch, tmp_path)
+    # webhook 설정 시 notifier 가 발송 경로를 타고 DRY_RUN(기본)이라 "dry_run" 상태가 됨.
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/discord")
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://example.test/slack")
     repos = create_memory_repositories()
     topic = repos.topics.get_by_normalized_name("btc")
     first_user = repos.users.get_or_create("discord", "graph_user_001")
@@ -39,6 +42,7 @@ def test_graph_collects_unique_topics_from_repository_subscriptions(monkeypatch,
         first_user.user_id,
         second_user.user_id,
     }
+    # DELIVERY_DRY_RUN 기본(true) → 오프라인에선 실제 전송 없이 "dry_run" 상태.
     assert all(item["status"] == "dry_run" for item in final["deliveries"])
 
 

@@ -534,26 +534,54 @@ def _webhook_for(channel: str) -> str:
 
 
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook)."""
+    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook 또는 Discord bot)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     deliveries = []
+
     for sub in subscriptions:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
+        channel_id = _value(sub, "channel_id")
         card = by_topic.get(topic_id)
-        send_result = {"status": "skipped"}
-        if card:
+
+        base = {
+            "delivery_id": f"{user_id}:{topic_id}",
+            "user_id": user_id,
+            "channel": channel,
+            "topic_id": topic_id,
+            "card_id": card.get("card_id") if card else None,
+        }
+
+        if not card:
+            deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
+            continue
+
+        text = notifier.format_card_text(card)
+        image_path = card.get("image_path") or card.get("image_url")
+
+        if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+            send_result = notifier.send_via_bot(
+                channel_id=channel_id,
+                text=text,
+                image_path=image_path,
+            )
+        else:
             send_result = notifier.send_card(
                 channel=channel,
                 webhook_url=_webhook_for(channel),
-                text=notifier.format_card_text(card),
-                image_path=card.get("image_path") or card.get("image_url"),
+                text=text,
+                image_path=image_path,
             )
-        deliveries.append({"delivery_id": f"{user_id}:{topic_id}",
-                           "user_id": user_id, "channel": channel, "topic_id": topic_id,
-                           "card_id": card.get("card_id") if card else None,
-                           "status": send_result.get("status", "failed"), "attempts": 1,
-                           "error_code": send_result.get("error")})
+
+        deliveries.append(
+            {
+                **base,
+                "status": send_result.get("status", "failed"),
+                "attempts": 1,
+                "error_code": send_result.get("error"),
+            }
+        )
+
     return {"deliveries": deliveries}

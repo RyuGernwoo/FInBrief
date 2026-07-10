@@ -28,8 +28,8 @@ def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
     return "unknown", topic
 
 
-def parse_intent(message: str, catalog: list[dict]) -> tuple[str, str | None]:
-    names = {t["topic_id"]: t["name"] for t in catalog}
+def parse_intent(message: str, catalog: list) -> tuple[str, str | None]:
+    names = {t.topic_id: t.name for t in catalog}
     if llm.use_llm():
         try:
             sys = INTENT_SYSTEM + "\n카탈로그: " + json.dumps(names, ensure_ascii=False)
@@ -48,15 +48,17 @@ def _resp(intent, status, reply, topic=None):
     return {"intent": intent, "status": status, "reply": reply, "topic": topic}
 
 
-def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str) -> dict:
+def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str,
+           channel_id: str | None = None) -> dict:
     catalog = service.catalog()
-    names = {t["topic_id"]: t["name"] for t in catalog}
+    names = {t.topic_id: t.name for t in catalog}
     intent, topic = parse_intent(message, catalog)
     catalog_str = ", ".join(names.values())
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)
-        return _resp(intent, "completed", f"현재 구독: {', '.join(names.get(t, t) for t in cur) or '없음'}")
+        subscribed = ", ".join(names.get(s.topic_id, s.topic_id) for s in cur) or "없음"
+        return _resp(intent, "completed", f"현재 구독: {subscribed}")
     if intent == "tier_status":
         t = service.tier(channel, ext_user_id)
         return _resp(intent, "completed", f"티어: {t['tier']} · 토픽 {t['used']}/{t['max_topics']}")
@@ -64,8 +66,8 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         if not topic:
             return _resp(intent, "blocked", f"어떤 토픽을 구독할까요? 가능: {catalog_str}")
         try:
-            cur = service.add(channel, ext_user_id, topic)
-            return _resp(intent, "completed", f"'{names[topic]}' 구독 완료 ✅ (현재 {len(cur)}개)", topic)
+            cur = service.add(channel, ext_user_id, topic, channel_id)
+            return _resp(intent, "completed", f"'{names.get(topic, topic)}' 구독 완료 ✅ (현재 {len(cur)}개)", topic)
         except TopicNotAllowed:
             return _resp(intent, "blocked", f"'{topic}'는 지원하지 않는 토픽이에요. 가능: {catalog_str}")
         except MaxTopicsExceeded as e:
