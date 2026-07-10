@@ -3,6 +3,7 @@
    로직은 chatbot.handle + SubscriptionService 재사용(얇은 엔트리포인트)."""
 from __future__ import annotations
 
+import asyncio
 import os
 
 import discord
@@ -56,8 +57,10 @@ tree = app_commands.CommandTree(client)
 @tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)", guild=GUILD)
 @app_commands.describe(message="원하는 걸 자연어로: 구독/조회/취소")
 async def finbrief(interaction: discord.Interaction, message: str):
-    res = handle(_service(), "discord", str(interaction.user.id), message)
-    await interaction.response.send_message(res["reply"], ephemeral=True)  # 본인만 보이게
+    # LLM intent 파싱이 3초를 넘길 수 있어 먼저 defer(15분 확보), 블로킹 handle 은 스레드에서.
+    await interaction.response.defer(ephemeral=True)  # "생각 중…" (본인만 보이게)
+    res = await asyncio.to_thread(handle, _service(), "discord", str(interaction.user.id), message)
+    await interaction.followup.send(res["reply"], ephemeral=True)
 
 
 @client.event
