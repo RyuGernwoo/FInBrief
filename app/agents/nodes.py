@@ -17,6 +17,7 @@ from app.core import llm
 from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
 from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
 from app.tools import image_gen
+from app.services import notifier
 
 
 _DIR = os.path.dirname(__file__)
@@ -381,7 +382,12 @@ def aggregate_cards(state: BriefState) -> dict[str, Any]:  # [나]
     }
 
 
-def deliver(state: BriefState) -> dict[str, Any]:  # [나] 추후 notifier(Discord/Slack)
+def _webhook_for(channel: str) -> str:
+    return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
+
+
+def deliver(state: BriefState) -> dict[str, Any]:
+    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     deliveries = []

@@ -1,0 +1,47 @@
+"""Discord/Slack webhook 발송 — services 레이어.
+   DELIVERY_DRY_RUN=true(기본) 이면 실제 전송 없이 상태만. webhook 없으면 skipped."""
+from __future__ import annotations
+
+import json
+import os
+
+
+def dry_run() -> bool:
+    return os.getenv("DELIVERY_DRY_RUN", "true").lower() != "false"
+
+
+def format_card_text(card: dict) -> str:
+    return (f"[{card.get('category', '')}] {card.get('headline', '')}\n"
+            f"{card.get('lead', '')}\n{card.get('body', '')}\n"
+            f"{card.get('source', '')} · {card.get('disclaimer', '')}")
+
+
+def _post_discord(webhook_url: str, text: str, image_path: str | None) -> None:
+    import httpx
+    if image_path and os.path.exists(image_path):
+        with open(image_path, "rb") as f:
+            r = httpx.post(webhook_url,
+                           data={"payload_json": json.dumps({"content": text})},
+                           files={"file": (os.path.basename(image_path), f, "image/png")},
+                           timeout=15)
+    else:
+        r = httpx.post(webhook_url, json={"content": text}, timeout=15)
+    r.raise_for_status()
+
+
+def _post_slack(webhook_url: str, text: str, image_path: str | None) -> None:
+    import httpx
+    # Slack incoming webhook 은 파일 첨부 불가 → 텍스트만 (이미지는 추후 files.upload)
+    httpx.post(webhook_url, json={"text": text}, timeout=15).raise_for_status()
+
+
+def send_card(*, channel: str, webhook_url: str, text: str, image_path: str | None = None) -> dict:
+    if not webhook_url:
+        return {"status": "skipped"}
+    if dry_run():
+        return {"status": "dry_run"}
+    try:
+        (_post_discord if channel == "discord" else _post_slack)(webhook_url, text, image_path)
+        return {"status": "sent"}
+    except Exception as e:  # noqa: BLE001
+        return {"status": "failed", "error": str(e)}
