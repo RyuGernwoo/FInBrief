@@ -23,6 +23,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | 기본 테스트 | 완료 |
 | 구독 API | 완료 |
 | 선택 토픽 ingestion API | 완료 |
+| 주요 지표 전체 리포트 이미지 생성 | 완료(mock) |
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
 | topic+date 카드 캐시 | 완료(mock) |
 | report/card 조회 API | 완료(mock) |
@@ -99,6 +100,7 @@ ref/              원본 참고 문서
 | `app/api/routes_cards.py` | 사용자별 오늘의 카드 조회 API |
 | `app/agents/pipeline.py` | API에서 LangGraph를 실행하는 service wrapper |
 | `app/agents/graph.py`, `app/agents/nodes.py` | repository 구독 기반 mock 리포트/카드 생성 graph |
+| `app/agents/report_catalog.py`, `app/agents/report_render.py` | 21개 주요 지표 전체 리포트 PNG 생성 |
 | `app/services/topic_ingestion.py` | 선택 토픽 기준 FRED/yfinance/ECOS/RSS 수집, 뉴스 필터링, embedding 저장 service |
 | `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
 | `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
@@ -202,6 +204,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 | `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY` | LLM gateway와 모델 설정 |
 | `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 설정 |
 | `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
+| `FINBRIEF_FONT`, `FINBRIEF_REPORT_OUT` | 한글 폰트 경로와 전체 리포트 이미지 출력 경로 |
 | `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `DELIVERY_DRY_RUN` | 발송 채널 설정 |
 
 실제 외부 데이터/RAG 적재를 실행하려면 사용자가 `.env`에 다음 값을 준비합니다. 키가 비어 있어도 local/test는 mock 또는 빈 결과로 동작합니다.
