@@ -2,7 +2,6 @@
    DELIVERY_DRY_RUN=true(기본) 이면 실제 전송 없이 상태만. webhook 없으면 skipped."""
 from __future__ import annotations
 
-import json
 import os
 
 
@@ -18,10 +17,11 @@ def format_card_text(card: dict) -> str:
 
 def _post_discord(webhook_url: str, text: str, image_path: str | None) -> None:
     import httpx
+    # 카드 이미지에 이미 모든 내용이 렌더돼 있으므로 이미지가 있으면 이미지만 발송.
+    # 이미지가 없을 때만(생성 실패/비활성) 텍스트로 폴백.
     if image_path and os.path.exists(image_path):
         with open(image_path, "rb") as f:
             r = httpx.post(webhook_url,
-                           data={"payload_json": json.dumps({"content": text})},
                            files={"file": (os.path.basename(image_path), f, "image/png")},
                            timeout=15)
     else:
