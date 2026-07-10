@@ -201,7 +201,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["pending", "sent", "failed", "retrying", "skipped"]
+          "enum": ["pending", "sent", "failed", "retrying", "skipped", "dry_run"]
         },
         "attempts": {
           "type": "integer",

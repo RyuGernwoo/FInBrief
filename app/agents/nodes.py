@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from langgraph.types import Send
@@ -21,7 +21,7 @@ from app.tools import image_gen
 from app.tools.data_sources import fred, yfinance_source
 from app.tools.news import rss, tagging
 from app.tools.embedding.upstage import EMBEDDING_PASSAGE_MODEL, UpstageEmbeddingProvider
-from app.services import notifier
+from app.services import notifier, topic_ingestion
 
 
 _DIR = os.path.dirname(__file__)
@@ -106,25 +106,7 @@ def ingest_news(state: BriefState) -> dict[str, Any]:
 
 def _collect_topic_indicator(topic: Topic, run_date: date) -> list[Any]:
     """토픽 source_mapping을 provider별로 분기해 최신 IndicatorValue[]를 수집."""
-    start = run_date - timedelta(days=7)
-    for mapping in topic.source_mapping:
-        try:
-            if mapping.provider == "fred" and mapping.series_id:
-                values = fred.fetch_fred_observations(
-                    series_id=mapping.series_id, indicator_id=topic.topic_id,
-                    name=topic.name, start_date=start, end_date=run_date,
-                )
-            elif mapping.provider == "yfinance" and mapping.ticker:
-                values = yfinance_source.fetch_yfinance_prices(
-                    ticker=mapping.ticker, indicator_id=topic.topic_id, name=topic.name,
-                )
-            else:
-                continue
-        except Exception:
-            continue
-        if values:
-            return values
-    return []
+    return topic_ingestion.collect_topic_indicators(topic, run_date)
 
 
 def collect_indicators(state: BriefState) -> dict[str, Any]:
@@ -561,8 +543,17 @@ def deliver(state: BriefState) -> dict[str, Any]:
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
         card = by_topic.get(topic_id)
+        send_result = {"status": "skipped"}
+        if card:
+            send_result = notifier.send_card(
+                channel=channel,
+                webhook_url=_webhook_for(channel),
+                text=notifier.format_card_text(card),
+                image_path=card.get("image_path") or card.get("image_url"),
+            )
         deliveries.append({"delivery_id": f"{user_id}:{topic_id}",
                            "user_id": user_id, "channel": channel, "topic_id": topic_id,
                            "card_id": card.get("card_id") if card else None,
-                           "status": "sent" if card else "skipped", "attempts": 1})
+                           "status": send_result.get("status", "failed"), "attempts": 1,
+                           "error_code": send_result.get("error")})
     return {"deliveries": deliveries}

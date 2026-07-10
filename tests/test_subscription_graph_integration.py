@@ -7,6 +7,9 @@ def _prepare_offline_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("FINBRIEF_IMAGE_STUB", "1")
     monkeypatch.setenv("FINBRIEF_OUT", str(tmp_path / "cards"))
     monkeypatch.setenv("FINBRIEF_IMG_OUT", str(tmp_path / "images"))
+    monkeypatch.setenv("DELIVERY_DRY_RUN", "true")
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://x/discord")
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://x/slack")
 
 
 def test_graph_collects_unique_topics_from_repository_subscriptions(monkeypatch, tmp_path):
@@ -36,7 +39,7 @@ def test_graph_collects_unique_topics_from_repository_subscriptions(monkeypatch,
         first_user.user_id,
         second_user.user_id,
     }
-    assert all(item["status"] == "sent" for item in final["deliveries"])
+    assert all(item["status"] == "dry_run" for item in final["deliveries"])
 
 
 def test_graph_reuses_cached_card_on_second_run(monkeypatch, tmp_path):
