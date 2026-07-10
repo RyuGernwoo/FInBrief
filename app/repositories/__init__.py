@@ -9,7 +9,7 @@ from app.repositories.protocols import (
     TopicRepository,
     UserRepository,
 )
-from app.repositories.supabase import create_supabase_repositories
+from app.repositories.supabase import SupabaseIngestionRepository, create_supabase_repositories
 
 __all__ = [
     "CardRepository",
@@ -18,6 +18,7 @@ __all__ = [
     "SubscriptionRepository",
     "TopicRepository",
     "UserRepository",
+    "SupabaseIngestionRepository",
     "create_memory_repositories",
     "create_supabase_repositories",
 ]

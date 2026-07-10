@@ -1,6 +1,6 @@
 -- FinBrief Supabase schema for PostgreSQL + pgvector.
 -- MVP scope: subscriptions, indicators, news RAG, card cache, delivery logs, eval logs.
--- RAG decision: Upstage Solar solar-embedding-1-large uses 4096 dimensions.
+-- RAG decision: Upstage Solar embedding passage/query models use 4096 dimensions.
 -- Keep search as exact cosine scan after date/tag filtering for the MVP.
 
 create extension if not exists pgcrypto;
