@@ -11,7 +11,8 @@ from discord import app_commands
 
 from app.services.chatbot import handle
 from app.services.subscription_service import SubscriptionService
-from app.services._repo_stub import StubTopics, StubUsers, StubSubs  # Phase 4에서 실 repository로 교체
+from app.repositories.memory import create_memory_repositories      # 로컬 개발용(재시작 시 초기화)
+from app.repositories.supabase import create_supabase_repositories  # 실 DB(영속)
 
 
 def _load_dotenv() -> None:
@@ -31,20 +32,23 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-# MVP 카탈로그(실제는 TopicRepository.list_catalog). 챗봇 화이트리스트 = 이 목록.
-CATALOG = [
-    {"topic_id": "usdkrw", "name": "원/달러 환율"},
-    {"topic_id": "us_rate", "name": "미국 기준금리"},
-    {"topic_id": "nasdaq", "name": "나스닥"},
-    {"topic_id": "btc", "name": "비트코인"},
-    {"topic_id": "semi", "name": "반도체"},
-]
-# 모듈 레벨(프로세스 동안 in-memory 유지) — 재시작 시 초기화(실 repo 붙이면 영속)
-_users, _subs, _topics = StubUsers(), StubSubs(), StubTopics(CATALOG)
+# repo 번들: SUPABASE_URL 있으면 실 DB(영속), 없으면 memory(재시작 시 초기화).
+# 봇은 news.match 를 안 쓰므로 query_embedding_provider 불필요.
+_REPOS = None
+
+
+def _repos():
+    global _REPOS
+    if _REPOS is None:
+        if os.getenv("SUPABASE_URL"):
+            _REPOS = create_supabase_repositories()
+        else:
+            _REPOS = create_memory_repositories()
+    return _REPOS
 
 
 def _service() -> SubscriptionService:
-    return SubscriptionService(_users, _subs, _topics)
+    return SubscriptionService(_repos())
 
 
 GUILD = discord.Object(id=int(os.environ["DISCORD_GUILD_ID"]))
