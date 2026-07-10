@@ -34,9 +34,12 @@ create table if not exists subscriptions (
     topic_id uuid not null references topics(id) on delete cascade,
     channel text not null check (channel in ('discord', 'slack')),
     active boolean not null default true,
+    discord_channel_id text,
     created_at timestamptz not null default now(),
     unique (user_id, topic_id, channel)
 );
+
+-- 기존 배포 마이그레이션: alter table subscriptions add column if not exists discord_channel_id text;
 
 create table if not exists indicator_values (
     id uuid primary key default gen_random_uuid(),

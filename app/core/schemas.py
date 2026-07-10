@@ -64,6 +64,7 @@ class Subscription(StrictModel):
     topic_id: str = Field(min_length=1)
     channel: DeliveryChannel
     active: bool = True
+    discord_channel_id: str | None = None
     created_at: datetime | None = None
 
 
