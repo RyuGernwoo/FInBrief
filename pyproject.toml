@@ -17,6 +17,7 @@ dependencies = [
     "litellm>=1.0",
     "pillow>=10.0",
     "google-genai>=1.0",
+    "discord.py>=2.3",
 ]
 
 [project.optional-dependencies]
