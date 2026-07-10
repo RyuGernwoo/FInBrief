@@ -16,7 +16,14 @@ from app.repositories.supabase import create_supabase_repositories
 def _repository_bundle(enable_mock_data: bool) -> RepositoryBundle:
     if enable_mock_data:
         return create_memory_repositories()
-    return create_supabase_repositories()
+
+    # Live mode: wire the Upstage query-embedding provider so that
+    # SupabaseNewsRepository.match() can call the match_news RPC.
+    from app.tools.embedding.upstage import UpstageEmbeddingProvider
+
+    return create_supabase_repositories(
+        query_embedding_provider=UpstageEmbeddingProvider().embed_query,
+    )
 
 
 def get_repository_bundle(settings: Settings = Depends(get_settings)) -> RepositoryBundle:

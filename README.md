@@ -198,6 +198,11 @@ curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10
 | `UPSTAGE_API_KEY` | 뉴스 passage/query embedding 실제 생성 |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase DB 적재 |
 
+`ENABLE_MOCK_DATA=false`로 두면 morning pipeline이 실데이터 모드(`live_data`)로 전환된다.
+이 모드에서 `ingest_news`는 RSS→태깅→Supabase 적재를, `collect_indicators`는 토픽
+`source_mapping` 기반 지표 수집을, `retrieve_evidence`는 `match_news` RPC(RAG)를 실제로 조회한다.
+`true`(기본값)에서는 fixture로 동작하므로 키 없이 로컬/테스트가 가능하다.
+
 ## 검증
 
 ```powershell
@@ -208,7 +213,7 @@ python -m pytest -q
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest -q`: 48 passed
+- `python -m pytest`: 70 passed (delivery-notifier 병합의 `test_deliver_dry_run` 1건은 선재 실패, RAG 전환과 무관)
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙

@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 
 from app.agents.graph import graph
+from app.core.config import get_settings
 from app.core.schemas import (
     BatchRunResult,
     CardArtifact,
@@ -97,6 +98,8 @@ def run_morning_pipeline(
             "deliveries": [],
             "errors": [],
             "dry_run": dry_run,
+            # Supabase/Upstage 실데이터 모드는 mock 비활성화 시에만 켠다.
+            "live_data": not get_settings().enable_mock_data,
         }
     )
     indicators = [
