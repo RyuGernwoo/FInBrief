@@ -92,7 +92,7 @@ ref/              원본 참고 문서
 | `app/api/router.py` | API v1 라우터 집계 |
 | `app/api/dependencies.py` | FastAPI dependency와 repository bundle provider |
 | `app/api/routes_health.py` | health endpoint |
-| `app/api/routes_subscriptions.py` | 토픽 catalog와 구독 추가/조회/삭제 API |
+| `app/api/routes_subscriptions.py` | 토픽 catalog·키워드 매칭(`POST /topics/match`)과 구독 추가/조회/삭제 API |
 | `app/api/routes_reports.py` | 수동 mock 리포트 실행과 최신 리포트 조회 API |
 | `app/api/routes_cards.py` | 사용자별 오늘의 카드 조회 API |
 | `app/agents/pipeline.py` | API에서 LangGraph를 실행하는 service wrapper |
@@ -108,9 +108,9 @@ ref/              원본 참고 문서
 | `app/tools/news/rss.py` | RSS entry 정규화, 중복 제거, 최신 뉴스 필터링 |
 | `app/tools/news/tagging.py` | 토픽 `news_keywords` 기반 뉴스 태깅 |
 | `app/tools/embedding/upstage.py` | passage/query embedding 입력 생성과 4096차원 검증 |
-| `data/default_topics.json` | MVP 기본 토픽 5개 fixture |
+| `data/default_topics.json` | 기본 토픽 카탈로그 fixture (지표/자산/섹터/키워드 100+개) |
 | `schemas/supabase.sql` | Supabase PostgreSQL + pgvector 테이블 구조 |
-| `schemas/seed_topics.sql` | 기본 토픽 seed SQL |
+| `schemas/seed_topics.sql` | 기본 토픽 카탈로그 seed SQL (`data/default_topics.json`과 동기화) |
 | `schemas/finbrief_state.schema.json` | LangGraph morning pipeline state 계약 |
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
@@ -160,6 +160,9 @@ API 문서는 서버 실행 후 다음 주소에서 확인할 수 있습니다.
 
 ```powershell
 curl http://127.0.0.1:8000/api/v1/topics
+curl -X POST http://127.0.0.1:8000/api/v1/topics/match `
+  -H "Content-Type: application/json" `
+  -d "{\"query\":\"AI 반도체\",\"limit\":5}"
 curl -X POST http://127.0.0.1:8000/api/v1/subscriptions/u_001/topics `
   -H "Content-Type: application/json" `
   -d "{\"topic_id\":\"topic_btc\",\"channel\":\"discord\"}"

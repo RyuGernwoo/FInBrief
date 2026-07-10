@@ -14,19 +14,26 @@ def test_default_topics_parse_as_topic_models():
 
     topics = [Topic.model_validate(item) for item in payload]
 
-    assert len(topics) == 5
-    assert {topic.normalized_name for topic in topics} == {
-        "usdkrw",
-        "us_rate",
-        "nasdaq",
-        "btc",
-        "semi",
-    }
+    assert len(topics) >= 100
+    normalized = {topic.normalized_name for topic in topics}
+    # core MVP topics stay in the catalog for downstream tests/demo
+    assert {"usdkrw", "us_rate", "nasdaq", "btc", "semi"}.issubset(normalized)
+    assert len(normalized) == len(topics)  # normalized_name is unique
     assert all(topic.source_mapping for topic in topics)
     assert all(
         any(mapping.news_keywords for mapping in topic.source_mapping)
         for topic in topics
     )
+    # the previously-unused 'keyword' theme type is now populated
+    assert any(topic.type == "keyword" for topic in topics)
+    # rich, de-duplicated news keyword vocabulary for tagging/matching
+    keywords = {
+        keyword.casefold()
+        for topic in topics
+        for mapping in topic.source_mapping
+        for keyword in mapping.news_keywords
+    }
+    assert len(keywords) >= 100
 
 
 def test_supabase_schema_uses_solar_4096_exact_scan_contract():
