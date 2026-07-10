@@ -387,7 +387,9 @@ def _webhook_for(channel: str) -> str:
 
 
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook)."""
+    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook).
+    구독은 state["subscriptions"](Phase 4) 우선, 없으면 fixtures.
+    실제 전송은 notifier(DELIVERY_DRY_RUN=true 기본이면 상태만)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     deliveries = []
@@ -396,8 +398,13 @@ def deliver(state: BriefState) -> dict[str, Any]:
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
         card = by_topic.get(topic_id)
-        deliveries.append({"delivery_id": f"{user_id}:{topic_id}",
-                           "user_id": user_id, "channel": channel, "topic_id": topic_id,
-                           "card_id": card.get("card_id") if card else None,
-                           "status": "sent" if card else "skipped", "attempts": 1})
+        base = {"delivery_id": f"{user_id}:{topic_id}", "user_id": user_id,
+                "channel": channel, "topic_id": topic_id,
+                "card_id": card.get("card_id") if card else None}
+        if not card:
+            deliveries.append({**base, "status": "skipped", "attempts": 0})
+            continue
+        res = notifier.send_card(channel=channel, webhook_url=_webhook_for(channel),
+                                 text=notifier.format_card_text(card), image_path=card.get("image_path"))
+        deliveries.append({**base, "status": res["status"], "attempts": 1})
     return {"deliveries": deliveries}
