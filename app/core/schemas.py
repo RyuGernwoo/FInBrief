@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 TopicType = Literal["indicator", "keyword", "sector", "asset"]
 UserTier = Literal["free", "paid"]
 DeliveryChannel = Literal["discord", "slack"]
-DeliveryStatus = Literal["pending", "sent", "failed", "retrying", "skipped"]
+DeliveryStatus = Literal["pending", "sent", "failed", "retrying", "skipped", "dry_run"]
 RunStatus = Literal["queued", "running", "completed", "partial_success", "failed"]
 
 
@@ -44,6 +44,9 @@ class TopicSourceMapping(StrictModel):
     provider: Literal["fred", "yfinance", "ecos", "news_rss", "rag"]
     series_id: str | None = None
     ticker: str | None = None
+    statistic_code: str | None = None
+    cycle: str | None = None
+    item_code: str | None = None
     query: str | None = None
     news_keywords: list[str] = Field(default_factory=list)
     notes: str | None = None

@@ -21,6 +21,10 @@ class BriefState(TypedDict, total=False):
     missing_indicators: list[str]
     top_news: list[dict[str, Any]]
     repositories: Any
+    # 실데이터 모드 스위치와 실적재 의존성 (Supabase RAG 실조회 경로에서만 사용)
+    live_data: bool
+    ingestion: Any
+    embedding_provider: Any
     subscriptions: list[dict[str, Any]]
     unique_topics: list[dict[str, Any]]
     topics_to_generate: list[dict[str, Any]]

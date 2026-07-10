@@ -11,13 +11,17 @@ from langgraph.types import Send
 
 from .state import BriefState
 from . import fixtures as fx
+from . import rag
 from .card_schema import CardContent
 from .render import render_card
 from app.core import llm
 from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
 from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
 from app.tools import image_gen
-from app.services import notifier
+from app.tools.data_sources import fred, yfinance_source
+from app.tools.news import rss, tagging
+from app.tools.embedding.upstage import EMBEDDING_PASSAGE_MODEL, UpstageEmbeddingProvider
+from app.services import notifier, topic_ingestion
 
 
 _DIR = os.path.dirname(__file__)
@@ -32,15 +36,113 @@ IMAGE_PROMPT_SYSTEM = (
 
 
 # ---- 공유 단계 (main graph) ----
+def _live_ingestion() -> Any:
+    """Supabase ingestion repository (live 모드 전용). 실패 시 None."""
+    try:
+        from app.repositories.supabase import SupabaseIngestionRepository
+        from app.repositories.supabase_client import create_supabase_client
+
+        return SupabaseIngestionRepository(create_supabase_client())
+    except Exception:
+        return None
+
+
+def _news_id_by_url(rows: Any) -> dict[str, str]:
+    """upsert_news_documents 응답에서 url -> DB news id 매핑을 만든다."""
+    mapping: dict[str, str] = {}
+    if not isinstance(rows, list):
+        return mapping
+    for row in rows:
+        if isinstance(row, dict) and row.get("url") and row.get("id"):
+            mapping[str(row["url"])] = str(row["id"])
+    return mapping
+
+
 def ingest_news(state: BriefState) -> dict[str, Any]:
-    """[팀원] 뉴스 수집→passage 임베딩→news_embeddings 저장."""
-    return {}
+    """뉴스 수집→태깅→passage 임베딩→Supabase 적재. live_data에서만 동작."""
+    if not state.get("live_data"):
+        return {}
+    repos: RepositoryBundle | None = state.get("repositories")
+    if repos is None:
+        return {}
+
+    ingestion = state.get("ingestion") or _live_ingestion()
+    provider = state.get("embedding_provider") or UpstageEmbeddingProvider()
+    if ingestion is None:
+        return {"errors": [{"code": "INGEST_SKIPPED", "message": "no ingestion repository",
+                            "node": "ingest_news", "topic": None}]}
+
+    try:
+        topics = repos.topics.list_catalog()
+        since = rag.since_for(_parse_run_date(state["run_date"]))
+        documents = rss.fetch_rss_news()
+        documents = rss.filter_recent_news(documents, since=since)
+        documents = tagging.tag_news_for_topics(documents, topics, include_general_market=True)
+        if not documents:
+            return {}
+
+        id_by_url = _news_id_by_url(ingestion.upsert_news_documents(documents))
+        rows: list[dict[str, Any]] = []
+        for document in documents:
+            news_id = id_by_url.get(str(document.url))
+            if news_id is None:
+                continue
+            try:
+                rows.append({
+                    "news_id": news_id,
+                    "embedding": provider.embed_passage(document),
+                    "embedding_model": EMBEDDING_PASSAGE_MODEL,
+                    "embedding_kind": "passage",
+                })
+            except Exception:
+                continue
+        if rows:
+            ingestion.upsert_news_embeddings(rows)
+        return {}
+    except Exception as exc:
+        return {"errors": [{"code": "INGEST_FAILED", "message": str(exc),
+                            "node": "ingest_news", "topic": None}]}
+
+
+def _collect_topic_indicator(topic: Topic, run_date: date) -> list[Any]:
+    """토픽 source_mapping을 provider별로 분기해 최신 IndicatorValue[]를 수집."""
+    return topic_ingestion.collect_topic_indicators(topic, run_date)
 
 
 def collect_indicators(state: BriefState) -> dict[str, Any]:
-    """[팀원] 전체 지표 수집 + 전체 리포트."""
-    indicators = [{"indicator_id": k, "source": "fixture", **v} for k, v in fx.FIXTURE_INDICATORS.items()]
-    return {"indicators": indicators, "report_url": None}
+    """전체 지표 수집. live_data에서는 source_mapping 실수집, 아니면 fixture."""
+    repos: RepositoryBundle | None = state.get("repositories")
+    if not state.get("live_data") or repos is None:
+        indicators = [{"indicator_id": k, "source": "fixture", **v} for k, v in fx.FIXTURE_INDICATORS.items()]
+        return {"indicators": indicators, "report_url": None}
+
+    run_date = _parse_run_date(state["run_date"])
+    indicators: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for graph_topic in state.get("unique_topics", []):
+        try:
+            topic_model = repos.topics.get(graph_topic["topic_id"])
+        except RepositoryNotFoundError:
+            continue
+        values = _collect_topic_indicator(topic_model, run_date)
+        if not values:
+            missing.append(graph_topic["topic_id"])
+            continue
+        latest = values[-1]
+        indicators.append({
+            "indicator_id": graph_topic["topic_id"],
+            "name": topic_model.name,
+            "source": latest.source,
+            "value": latest.current_value,
+            "prev": latest.previous_value,
+            "change_pct": latest.change_percent,
+            "unit": latest.unit,
+        })
+
+    result: dict[str, Any] = {"indicators": indicators, "report_url": None}
+    if missing:
+        result["missing_indicators"] = missing
+    return result
 
 
 def _topic_category(topic: Topic) -> str:
@@ -120,6 +222,47 @@ def collect_topics(state: BriefState) -> dict[str, Any]:
             seen.add(tid)
             uniq.append(next(t for t in fx.FIXTURE_TOPICS if t["topic_id"] == tid))
     return {"unique_topics": uniq}
+
+
+def _indicators_index(indicators: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("indicator_id")): item for item in indicators if item.get("indicator_id")}
+
+
+def retrieve_evidence(state: BriefState) -> dict[str, Any]:
+    """[나] fan-out 이전, 캐시 미스 토픽에 지표+뉴스 근거(RAG)를 채운다.
+
+    live_data 전용. 여기서 repos.news.match(match_news RPC)를 호출하고 §rag 후처리를
+    적용해 topic payload에 실어 보내므로, build_card는 네트워크/repos 접근 없이
+    payload만 소비한다. live가 아니면 no-op이며 build_card가 fixture로 fallback한다.
+    """
+    if not state.get("live_data"):
+        return {}
+    repos: RepositoryBundle | None = state.get("repositories")
+    topics = state.get("topics_to_generate", [])
+    if repos is None or not topics:
+        return {}
+
+    since = rag.since_for(_parse_run_date(state["run_date"]))
+    indicator_index = _indicators_index(state.get("indicators", []))
+    enriched: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for graph_topic in topics:
+        item = dict(graph_topic)
+        try:
+            topic_model = repos.topics.get(graph_topic["topic_id"])
+            evidence = rag.postprocess_evidence(repos.news.match(topic_model, since, rag.RAG_K))
+            item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
+        except Exception as exc:
+            item["evidence"] = []
+            errors.append({"code": "RAG_FAILED", "message": str(exc),
+                           "node": "retrieve_evidence", "topic": graph_topic.get("topic_id")})
+        item["indicator"] = indicator_index.get(graph_topic["topic_id"], {})
+        enriched.append(item)
+
+    result: dict[str, Any] = {"topics_to_generate": enriched}
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 def dispatch(state: BriefState) -> list[Send] | str:
@@ -240,10 +383,14 @@ def persist_cards(state: BriefState) -> dict[str, Any]:
 
 
 # ---- 토픽별 카드 생성 서브그래프 (build_card 안에서 순차 호출) ----
-def _fetch_data(topic: dict) -> dict:            # [팀원]
+def _fetch_data(topic: dict) -> dict:            # retrieve_evidence가 채운 지표 or fixture fallback
+    if "indicator" in topic:
+        return topic.get("indicator") or {}
     return fx.FIXTURE_INDICATORS.get(topic["topic_id"], fx.FIXTURE_INDICATORS.get(_topic_source_key(topic), {}))
 
-def _retrieve_news(topic: dict) -> list[dict]:   # [팀원] RAG(match_news) → NewsEvidence[]
+def _retrieve_news(topic: dict) -> list[dict]:   # retrieve_evidence가 채운 RAG 근거 or fixture fallback
+    if "evidence" in topic:
+        return topic.get("evidence") or []
     return fx.FIXTURE_NEWS.get(topic["topic_id"], fx.FIXTURE_NEWS.get(_topic_source_key(topic), []))
 
 def _clip(s, n: int) -> str:
@@ -387,31 +534,54 @@ def _webhook_for(channel: str) -> str:
 
 
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook).
-    구독은 state["subscriptions"](Phase 4) 우선, 없으면 fixtures.
-    실제 전송은 notifier(DELIVERY_DRY_RUN=true 기본이면 상태만)."""
+    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook 또는 Discord bot)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     deliveries = []
+
     for sub in subscriptions:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
         channel = _value(sub, "channel")
-        channel_id = _value(sub, "discord_channel_id")
+        channel_id = _value(sub, "channel_id")
         card = by_topic.get(topic_id)
-        base = {"delivery_id": f"{user_id}:{topic_id}", "user_id": user_id,
-                "channel": channel, "topic_id": topic_id,
-                "card_id": card.get("card_id") if card else None}
+
+        base = {
+            "delivery_id": f"{user_id}:{topic_id}",
+            "user_id": user_id,
+            "channel": channel,
+            "topic_id": topic_id,
+            "card_id": card.get("card_id") if card else None,
+        }
+
         if not card:
-            deliveries.append({**base, "status": "skipped", "attempts": 0})
+            deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
             continue
+
         text = notifier.format_card_text(card)
-        image_path = card.get("image_path")
-        if channel == "discord" and channel_id:
-            # 봇 토큰 직접 전송(웹훅 URL 불필요). channel_id 없으면 웹훅 폴백.
-            res = notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
+        image_path = card.get("image_path") or card.get("image_url")
+
+        if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+            send_result = notifier.send_via_bot(
+                channel_id=channel_id,
+                text=text,
+                image_path=image_path,
+            )
         else:
-            res = notifier.send_card(channel=channel, webhook_url=_webhook_for(channel),
-                                     text=text, image_path=image_path)
-        deliveries.append({**base, "status": res["status"], "attempts": 1})
+            send_result = notifier.send_card(
+                channel=channel,
+                webhook_url=_webhook_for(channel),
+                text=text,
+                image_path=image_path,
+            )
+
+        deliveries.append(
+            {
+                **base,
+                "status": send_result.get("status", "failed"),
+                "attempts": 1,
+                "error_code": send_result.get("error"),
+            }
+        )
+
     return {"deliveries": deliveries}

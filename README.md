@@ -22,6 +22,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | Supabase ingestion payload adapter | 완료 |
 | 기본 테스트 | 완료 |
 | 구독 API | 완료 |
+| 선택 토픽 ingestion API | 완료 |
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
 | topic+date 카드 캐시 | 완료(mock) |
 | report/card 조회 API | 완료(mock) |
@@ -93,10 +94,12 @@ ref/              원본 참고 문서
 | `app/api/dependencies.py` | FastAPI dependency와 repository bundle provider |
 | `app/api/routes_health.py` | health endpoint |
 | `app/api/routes_subscriptions.py` | 토픽 catalog·키워드 매칭(`POST /topics/match`)과 구독 추가/조회/삭제 API |
+| `app/api/routes_ingestion.py` | 선택 토픽 외부 데이터 수집과 Supabase 적재 API |
 | `app/api/routes_reports.py` | 수동 mock 리포트 실행과 최신 리포트 조회 API |
 | `app/api/routes_cards.py` | 사용자별 오늘의 카드 조회 API |
 | `app/agents/pipeline.py` | API에서 LangGraph를 실행하는 service wrapper |
 | `app/agents/graph.py`, `app/agents/nodes.py` | repository 구독 기반 mock 리포트/카드 생성 graph |
+| `app/services/topic_ingestion.py` | 선택 토픽 기준 FRED/yfinance/ECOS/RSS 수집, 뉴스 필터링, embedding 저장 service |
 | `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
 | `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
 | `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
@@ -173,6 +176,19 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10"
 ```
 
+실제 Supabase/RAG 적재 모드에서는 `.env`에 `ENABLE_MOCK_DATA=false`, Supabase service role key,
+`UPSTAGE_API_KEY`, 필요한 외부 데이터 API key/RSS URL을 설정한 뒤 선택 토픽 단위로 적재할 수 있습니다.
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/topics/topic_btc/ingest `
+  -H "Content-Type: application/json" `
+  -d "{\"run_date\":\"2026-07-10\",\"include_indicators\":true,\"include_news\":true,\"include_embeddings\":true}"
+
+curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
+  -H "Content-Type: application/json" `
+  -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true,\"refresh_data\":true}"
+```
+
 ## 환경변수
 
 기본값은 `.env.example`에 정리되어 있습니다. 실제 secret은 `.env`에만 입력하고 Git에 커밋하지 않습니다.
@@ -198,6 +214,15 @@ curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10
 | `UPSTAGE_API_KEY` | 뉴스 passage/query embedding 실제 생성 |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase DB 적재 |
 
+`ENABLE_MOCK_DATA=false`로 두면 morning pipeline이 실데이터 모드(`live_data`)로 전환된다.
+이 모드에서 `ingest_news`는 RSS→태깅→Supabase 적재를, `collect_indicators`는 토픽
+`source_mapping` 기반 지표 수집을, `retrieve_evidence`는 `match_news` RPC(RAG)를 실제로 조회한다.
+`true`(기본값)에서는 fixture로 동작하므로 키 없이 로컬/테스트가 가능하다.
+
+선택 토픽 적재 API는 `ENABLE_MOCK_DATA=false`에서 Supabase에 실제 upsert를 수행한다.
+`ENABLE_MOCK_DATA=true`에서는 기본 dependency가 Supabase ingestion repository를 만들지 않으므로,
+실제 저장 테스트는 live 설정 또는 테스트용 dependency override로 수행한다.
+
 ## 검증
 
 ```powershell
@@ -208,7 +233,7 @@ python -m pytest -q
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest -q`: 48 passed
+- `python -m pytest`: 70 passed (delivery-notifier 병합의 `test_deliver_dry_run` 1건은 선재 실패, RAG 전환과 무관)
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙
@@ -223,6 +248,6 @@ python -m pytest -q
 
 1. LiteLLM 실제 분석 경로와 fallback metadata 정리
 2. Langfuse trace 기록 연결
-3. Discord/Slack webhook dry-run adapter와 실제 발송 로그 추가
-4. 관리 챗봇 명령 parsing 연결
+3. Langfuse trace에 ingestion count와 RAG evidence metadata 기록
+4. 관리 챗봇 command를 ingestion trigger와 연결
 5. 자동 평가 scaffold와 safety 검증 연결
