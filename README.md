@@ -27,6 +27,8 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
 | topic+date 카드 캐시 | 완료(mock) |
 | report/card 조회 API | 완료(mock) |
+| Docker/Compose 실행 단위 | 완료 |
+| GitHub Actions CI/CD workflow | 완료 |
 | LiteLLM/Langfuse 실제 연동 | 예정 |
 | Discord/Slack 실제 발송 | 예정 |
 
@@ -65,7 +67,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | UI | Streamlit 예정 |
 | Data | FRED, yfinance, ECOS, 경제 뉴스 RSS, fixture JSON |
 | Delivery | Discord/Slack webhook |
-| Infra | Docker, GitHub Actions, GCP Compute Engine 예정 |
+| Infra | Docker, GitHub Actions, GCP Compute Engine |
 
 ## 디렉터리 구조
 
@@ -82,6 +84,7 @@ evals/            자동 평가 스키마와 평가 데이터셋
 reports/          로컬 생성 리포트 산출물
 schemas/          DB와 workflow 스키마 계약
 tests/            테스트 코드
+.github/          GitHub Actions CI/CD workflow
 project_docs/     기획서, 로드맵, 구현 기획, 운영 검증, 하네스 기록 문서
 ref/              원본 참고 문서
 ```
@@ -118,6 +121,11 @@ ref/              원본 참고 문서
 | `schemas/seed_topics.sql` | 기본 토픽 카탈로그 seed SQL (`data/default_topics.json`과 동기화) |
 | `schemas/finbrief_state.schema.json` | LangGraph morning pipeline state 계약 |
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
+| `.github/workflows/ci.yml` | compile, pytest, Docker build 자동 검증 |
+| `.github/workflows/cd.yml` | GHCR image build/push, GCE Compose 배포, health check, rollback |
+| `Dockerfile` | FinBrief FastAPI 컨테이너 이미지 |
+| `docker-compose.yml` | 로컬/서버 공통 실행 단위 |
+| `.dockerignore` | secret, cache, 문서, 생성 산출물 build context 제외 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
 | `pyproject.toml` | 패키지, 의존성, pytest 설정 |
 
@@ -191,6 +199,47 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
   -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true,\"refresh_data\":true}"
 ```
 
+## Docker 실행
+
+Docker Desktop 또는 Docker Engine이 실행 중인 상태에서 다음 명령으로 로컬 컨테이너를 빌드하고 실행합니다.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
+curl http://127.0.0.1:8000/api/v1/health
+docker compose ps
+```
+
+종료할 때는 다음 명령을 사용합니다.
+
+```powershell
+docker compose down
+```
+
+기본 Compose 설정은 `ENABLE_MOCK_DATA=true`, `FINBRIEF_LLM_STUB=1`, `FINBRIEF_IMAGE_STUB=1`, `DELIVERY_DRY_RUN=true`를 사용하므로 외부 API key 없이 health와 mock 리포트 경로를 먼저 확인할 수 있습니다. 서비스 포트는 `.env`의 `SERVICE_PORT`로 바꿀 수 있습니다.
+
+## CI/CD
+
+GitHub Actions workflow는 두 단계로 구성되어 있습니다.
+
+| Workflow | Trigger | 역할 |
+| --- | --- | --- |
+| `FinBrief CI` | `push`, `pull_request`, `workflow_dispatch` | Python 3.11 설치, `compileall`, 전체 pytest, Docker build |
+| `FinBrief CD` | `FinBrief CI`의 main 성공 후, 또는 수동 실행 | GHCR image build/push, GCE SSH 배포, `/api/v1/health` 확인, rollback |
+
+CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 GitHub Settings에서 다음 Secrets를 먼저 준비합니다.
+
+| Secret | 용도 |
+| --- | --- |
+| `GCE_HOST` | GCP Compute Engine 외부 IP 또는 도메인 |
+| `GCE_USERNAME` | 배포 서버 Linux 사용자 |
+| `GCE_SSH_KEY` | 배포 서버 접속용 private key |
+| `SERVICE_PORT` | 배포 포트. 기본값 `8000` |
+| `ENABLE_MOCK_DATA` | 첫 배포 권장값 `true` |
+| `FINBRIEF_LLM_STUB`, `FINBRIEF_IMAGE_STUB`, `DELIVERY_DRY_RUN` | 첫 배포 권장값 `1`, `1`, `true` |
+
+실데이터 모드로 전환할 때는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_WEBHOOK_URL` 등을 추가하고 `ENABLE_MOCK_DATA=false`로 바꿉니다.
+
 ## 환경변수
 
 기본값은 `.env.example`에 정리되어 있습니다. 실제 secret은 `.env`에만 입력하고 Git에 커밋하지 않습니다.
@@ -200,10 +249,12 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 | `APP_NAME`, `APP_VERSION`, `APP_ENV` | 서비스 이름, 버전, 실행 환경 |
 | `API_V1_PREFIX` | API prefix. 기본값은 `/api/v1` |
 | `ENABLE_MOCK_DATA` | fixture/mock 데이터 사용 여부 |
+| `SERVICE_PORT`, `APP_IMAGE` | Docker Compose 포트와 이미지 지정 |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase 연결 정보 |
-| `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY` | LLM gateway와 모델 설정 |
+| `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY`, `FINBRIEF_LLM_STUB` | LLM gateway와 모델 설정 |
 | `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 설정 |
 | `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
+| `GEMINI_API_KEY`, `FINBRIEF_IMAGE_MODEL`, `FINBRIEF_IMAGE_STUB` | 이미지 생성 설정 |
 | `FINBRIEF_FONT`, `FINBRIEF_REPORT_OUT` | 한글 폰트 경로와 전체 리포트 이미지 출력 경로 |
 | `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `DELIVERY_DRY_RUN` | 발송 채널 설정 |
 
@@ -230,13 +281,16 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 
 ```powershell
 python -m compileall app
-python -m pytest -q
+python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-ci --disable-warnings
+docker compose config
 ```
 
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest`: 70 passed (delivery-notifier 병합의 `test_deliver_dry_run` 1건은 선재 실패, RAG 전환과 무관)
+- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-ci --disable-warnings`: 96 passed / 1 warning
+- `docker build -t finbrief:local -f Dockerfile .`: 통과
+- `docker run ... finbrief:local` health smoke: `200`, `status=ok`, `mock_data=true`
 - `GET /api/v1/health`: `200`, `status=ok`
 
 ## 개발 원칙
@@ -249,8 +303,8 @@ python -m pytest -q
 
 ## 다음 작업
 
-1. LiteLLM 실제 분석 경로와 fallback metadata 정리
-2. Langfuse trace 기록 연결
-3. Langfuse trace에 ingestion count와 RAG evidence metadata 기록
-4. 관리 챗봇 command를 ingestion trigger와 연결
+1. GitHub Secrets와 GCE VM을 준비한 뒤 `FinBrief CD`를 수동 실행
+2. 첫 배포는 mock/stub mode로 `/api/v1/health` 확인
+3. live secret을 채운 뒤 Supabase/RAG smoke test 수행
+4. LiteLLM 실제 분석 경로와 Langfuse trace 기록 연결
 5. 자동 평가 scaffold와 safety 검증 연결
