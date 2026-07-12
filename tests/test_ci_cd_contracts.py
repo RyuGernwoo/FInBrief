@@ -15,16 +15,21 @@ def test_ci_workflow_runs_mock_compile_pytest_and_docker_build():
     assert "pull_request:" in text
     assert "workflow_dispatch:" in text
     assert 'PYTHON_VERSION: "3.11"' in text
+    assert "APP_ENV: test" not in text
     assert 'ENABLE_MOCK_DATA: "true"' in text
     assert 'FINBRIEF_LLM_STUB: "1"' in text
     assert 'FINBRIEF_IMAGE_STUB: "1"' in text
     assert 'DELIVERY_DRY_RUN: "true"' in text
+    assert "actions/checkout@v7" in text
+    assert "actions/setup-python@v6" in text
     assert "python -m compileall app" in text
+    assert "mkdir -p .pytest_cache" in text
     assert (
         "python -m pytest -p no:cacheprovider --basetemp "
         ".pytest_cache/basetemp-ci --disable-warnings"
     ) in text
     assert "docker build -t finbrief:ci -f Dockerfile ." in text
+    assert 'if [ "${{ needs.compile.result }}" != "success" ]' not in text
 
 
 def test_cd_workflow_builds_ghcr_deploys_gce_and_keeps_rollback_state():
@@ -34,6 +39,7 @@ def test_cd_workflow_builds_ghcr_deploys_gce_and_keeps_rollback_state():
     assert "workflow_run:" in text
     assert "- FinBrief CI" in text
     assert "workflow_dispatch:" in text
+    assert "actions/checkout@v7" in text
     assert "ghcr.io" in text
     assert "${{ github.repository }}/finbrief-api" in text
     assert "GCE_HOST" in text
