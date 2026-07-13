@@ -67,6 +67,11 @@ def test_docker_runtime_contract_matches_finbrief_service():
     dockerignore = read(".dockerignore")
 
     assert "FROM python:3.11-slim" in dockerfile
+    assert "FROM python:3.11-slim AS builder" in dockerfile
+    assert "FROM python:3.11-slim AS runtime" in dockerfile
+    assert "python -m pip wheel --wheel-dir /wheels ." in dockerfile
+    assert "COPY --from=builder /wheels /wheels" in dockerfile
+    assert "--no-index --find-links=/wheels" in dockerfile
     assert "USER finbrief" in dockerfile
     assert "APP_ENV=prod" in dockerfile
     assert "APP_ENV=production" not in dockerfile

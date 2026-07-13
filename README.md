@@ -27,7 +27,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
 | topic+date 카드 캐시 | 완료(mock) |
 | report/card 조회 API | 완료(mock) |
-| Docker/Compose 실행 단위 | 완료 |
+| Docker/Compose 실행 단위 | 완료(multi-stage build) |
 | GitHub Actions CI/CD workflow | 완료 |
 | LiteLLM/Langfuse 관측성 연동 | 부분 완료 |
 | Discord/Slack 실제 발송 | 예정 |
@@ -123,7 +123,7 @@ ref/              원본 참고 문서
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
 | `.github/workflows/ci.yml` | compile, pytest, Docker build 자동 검증 |
 | `.github/workflows/cd.yml` | GHCR image build/push, GCE Compose 배포, health check, rollback |
-| `Dockerfile` | FinBrief FastAPI 컨테이너 이미지 |
+| `Dockerfile` | builder/runtime multi-stage FinBrief FastAPI 컨테이너 이미지 |
 | `docker-compose.yml` | 로컬/서버 공통 실행 단위 |
 | `.dockerignore` | secret, cache, 문서, 생성 산출물 build context 제외 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
@@ -202,6 +202,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 ## Docker 실행
 
 Docker Desktop 또는 Docker Engine이 실행 중인 상태에서 다음 명령으로 로컬 컨테이너를 빌드하고 실행합니다.
+Dockerfile은 builder stage에서 FinBrief wheel과 의존성 wheel을 생성하고, runtime stage에서 해당 wheelhouse만 설치하는 multi-stage 구조입니다. 기존 Compose 실행 방식과 GCE CD 배포 방식은 그대로 유지됩니다.
 
 ```powershell
 Copy-Item .env.example .env
@@ -290,10 +291,11 @@ docker compose config
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-ci --disable-warnings`: 변경 시 재실행 필요
-- `docker build -t finbrief:local -f Dockerfile .`: 통과
-- `docker run ... finbrief:local` health smoke: `200`, `status=ok`, `mock_data=true`
-- `GET /api/v1/health`: `200`, `status=ok`
+- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-docker-multistage --disable-warnings`: 통과
+- `docker compose config`: 통과
+- `docker build -t finbrief:multi-stage -f Dockerfile .`: Docker Desktop Linux Engine 미실행으로 이번 작업에서 미검증
+- `docker run ... finbrief:multi-stage` health smoke: Docker build 미수행으로 이번 작업에서 미검증
+- `GET /api/v1/health`: 로컬 서버 미실행으로 이번 작업에서 재확인하지 않음
 
 ## 개발 원칙
 
