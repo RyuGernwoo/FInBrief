@@ -22,4 +22,4 @@ def test_analyze_llm_path(monkeypatch):
                          {"value": 18120.3, "change_pct": 0.78, "unit": "pt"},
                          [{"title": "t", "snippet": "s"}])
     CardContent(**out)                 # 재검증
-    assert len(out["headline"]) <= 14  # 클립 확인
+    assert len(out["headline"]) <= 20  # 클립 확인

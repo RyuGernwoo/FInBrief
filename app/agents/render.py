@@ -34,6 +34,14 @@ def _f(sz: int):
     return _fc[sz]
 
 
+def _fit_font(d, text, max_width, start, minimum):
+    """텍스트가 max_width 안에 들어가는 가장 큰 폰트를 start→minimum 로 탐색."""
+    for size in range(start, minimum - 1, -2):
+        if d.textlength(str(text), font=_f(size)) <= max_width:
+            return _f(size)
+    return _f(minimum)
+
+
 def _wrap(d, text, font, maxw):
     lines, cur = [], ""
     for w in str(text).split(" "):
@@ -62,8 +70,12 @@ def render_card(content: dict, out_path: str) -> str:
     d.text((bx + bs / 2, by + 68), str(content.get("index_no", "00")), font=_f(52), fill=INK, anchor="mm")
     tx = bx + bs + 26
     d.text((tx, by + 8), content.get("subtitle", ""), font=_f(30), fill=GRAY, anchor="lm")
-    d.text((tx, by + 66), content.get("headline", ""), font=_f(60), fill=INK, anchor="lm", stroke_width=2, stroke_fill=INK)
-    ix0, iy0, ix1, iy1 = padx, 200, CANVAS - padx, 640
+    # 제목: 오른쪽 여백까지 폭에 맞춰 폰트 자동 축소(60→38). 잘림(…) 없이 전체 표시.
+    head = str(content.get("headline", ""))
+    head_maxw = (CANVAS - padx) - tx - 8
+    d.text((tx, by + 66), head, font=_fit_font(d, head, head_maxw, 60, 38),
+           fill=INK, anchor="lm", stroke_width=2, stroke_fill=INK)
+    ix0, iy0, ix1, iy1 = padx, 200, CANVAS - padx, 600
     ip = content.get("image_url")
     if ip and os.path.exists(ip):
         ill = Image.open(ip).convert("RGB")
@@ -81,15 +93,18 @@ def render_card(content: dict, out_path: str) -> str:
         d.text(((ix0 + ix1) / 2, (iy0 + iy1) / 2), "AI 일러스트 자리 (Nano Banana)", font=_f(20), fill=(120, 130, 145), anchor="mm")
     d.rounded_rectangle([ix0, iy0, ix1, iy1], radius=8, outline=EDGE, width=2)
     maxw = CANVAS - 2 * padx
-    y = 686
+    y = 648
     for ln in _wrap(d, content.get("lead", ""), _f(33), maxw):
         d.text((CANVAS / 2, y), ln, font=_f(33), fill=INK, anchor="mm", stroke_width=1, stroke_fill=INK)
         y += 46
-    y += 14
-    for ln in _wrap(d, content.get("body", ""), _f(30), maxw):
-        d.text((CANVAS / 2, y), ln, font=_f(30), fill=GRAY, anchor="mm")
-        y += 44
-    d.text((CANVAS / 2, CANVAS - 92), content.get("source", ""), font=_f(20), fill=MUTED, anchor="mm")
-    d.text((CANVAS / 2, CANVAS - 58), content.get("disclaimer", ""), font=_f(19), fill=MUTED, anchor="mm")
+    y += 12
+    for ln in _wrap(d, content.get("body", ""), _f(28), maxw):
+        if y > 944:            # 출처 영역 침범 방지
+            break
+        d.text((CANVAS / 2, y), ln, font=_f(28), fill=GRAY, anchor="mm")
+        y += 40
+    # 출처: 더 크고 진하게(GRAY) 표시
+    d.text((CANVAS / 2, CANVAS - 92), content.get("source", ""), font=_f(23), fill=GRAY, anchor="mm")
+    d.text((CANVAS / 2, CANVAS - 54), content.get("disclaimer", ""), font=_f(18), fill=MUTED, anchor="mm")
     img.save(out_path)
     return out_path
