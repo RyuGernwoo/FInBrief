@@ -138,9 +138,9 @@ create index if not exists idx_deliveries_run_status
 
 create or replace function match_news(
     query_embedding vector(4096),
-    topic_tags text[] default '{}'::text[],
-    since timestamptz default now() - interval '2 days',
-    match_count int default 5
+    topic_tags text[] default '{}'::text[],    -- 유지: 하드필터 아님(향후 soft boost 여지)
+    since timestamptz default now() - interval '3 days',
+    match_count int default 40                 -- 후보 폭 확대(최종 랭킹은 app/agents/rag.py)
 ) returns table (
     news_id uuid,
     title text,
@@ -162,8 +162,7 @@ language sql stable as $$
     from news_embeddings e
     join news_documents d on d.id = e.news_id
     where e.embedding_kind = 'passage'
-      and d.published_at >= since
-      and (cardinality(topic_tags) = 0 or d.tags && topic_tags)
-    order by e.embedding <=> query_embedding
+      and d.published_at >= since               -- ★ 날짜만(하드 태그필터 제거)
+    order by e.embedding <=> query_embedding     -- ★ 의미 유사도가 후보 결정
     limit match_count;
 $$;

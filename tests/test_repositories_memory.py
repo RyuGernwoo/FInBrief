@@ -102,13 +102,22 @@ def test_memory_news_match_returns_topic_tagged_evidence_sorted_by_similarity():
 
     evidence = repos.news.match(topic, datetime(2026, 7, 8, tzinfo=timezone.utc), 3)
 
+    # 하드 태그필터 제거: 태그 안 겹치는 n_002 도 후보에 포함되되(0.5) 겹치는 n_001(0.9)보다 하위.
     assert evidence == [
         NewsEvidence(
             news_id="n_001",
             title="반도체 업황 회복 기대",
             source="fixture",
             url="https://example.com/semi",
-            similarity=1.0,
+            similarity=0.9,
             snippet="AI 반도체 수요가 회복되고 있습니다.",
-        )
+        ),
+        NewsEvidence(
+            news_id="n_002",
+            title="환율 변동성 확대",
+            source="fixture",
+            url="https://example.com/fx",
+            similarity=0.5,
+            snippet="원달러 환율이 움직였습니다.",
+        ),
     ]
