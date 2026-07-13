@@ -13,7 +13,12 @@ import os
 from datetime import date
 
 from app.agents.pipeline import run_morning_pipeline
+from app.core.env import load_dotenv
 from app.core.schemas import BatchRunResult
+
+# standalone 실행 시 .env 로드(토큰/DB 키가 os.getenv 로 조회되도록).
+# 컨테이너는 env_file 로 이미 주입되어 setdefault 로 무시된다.
+load_dotenv()
 
 
 def run_batch(*, run_date: date | None = None) -> BatchRunResult:

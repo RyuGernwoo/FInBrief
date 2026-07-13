@@ -477,10 +477,37 @@ def _display_unit(topic: dict, data: dict) -> str:
     return "pt"
 
 
+def _fmt_num(value: Any, decimals: int) -> str:
+    """반올림 후 불필요한 소수점 0을 제거해 문자열로. (예: 3.50->"3.5", 3.0->"3")"""
+    try:
+        v = round(float(value), decimals)
+    except (TypeError, ValueError):
+        return str(value)
+    if decimals <= 0:
+        return str(int(v))
+    return f"{v:.{decimals}f}".rstrip("0").rstrip(".") or "0"
+
+
+def _fmt_value(value: Any, unit: str) -> str:
+    """지표 현재값 포맷: pt(지수)는 정수, 그 외(통화 등)는 소수 2자리."""
+    if value is None:
+        return ""
+    decimals = 0 if str(unit or "").strip() == "pt" else 2
+    return _fmt_num(value, decimals)
+
+
+def _fmt_pct(value: Any) -> str:
+    """변화율(%) 포맷: 소수 2자리."""
+    if value is None:
+        return "0"
+    return _fmt_num(value, 2)
+
+
 def _user_prompt(topic: dict, data: dict, news: list[dict]) -> str:
     unit = _display_unit(topic, data)
     lines = [f"topic: {topic['name']} ({topic['category']})",
-             f"indicator: 현재값 {data.get('value')}, 변화율 {data.get('change_pct')}%",
+             f"indicator: 현재값 {_fmt_value(data.get('value'), unit)}, "
+             f"변화율 {_fmt_pct(data.get('change_pct'))}%",
              f"단위/통화: {unit} (이 단위를 그대로 사용할 것)",
              "news:"]
     lines += [f"- {n['title']}: {n['snippet']}" for n in news] or ["- (none)"]
@@ -488,10 +515,11 @@ def _user_prompt(topic: dict, data: dict, news: list[dict]) -> str:
 
 
 def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
-    chg = data.get("change_pct", 0.0)
+    unit = _display_unit(topic, data)
+    chg = data.get("change_pct", 0.0) or 0.0
     arrow = "상승" if chg > 0 else ("하락" if chg < 0 else "보합")
     return {"headline": f"{topic['name']} {arrow}",
-            "lead": f"{topic['name']} {data.get('value')} ({chg:+.2f}%)",
+            "lead": f"{topic['name']} {_fmt_value(data.get('value'), unit)} ({_fmt_pct(chg)}%)",
             "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (local)",
             "source": "FinBrief"}
 
