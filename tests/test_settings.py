@@ -14,7 +14,7 @@ def test_settings_load_default_local_values():
     assert settings.finbrief_llm_num_retries == 2
     assert settings.finbrief_llm_guardrail_enabled is True
     assert settings.finbrief_llm_pii_masking is True
-    assert "매수" in settings.finbrief_llm_forbidden_terms
+    assert "지금 매수" in settings.finbrief_llm_forbidden_terms
 
 
 def test_settings_support_environment_overrides(monkeypatch):
