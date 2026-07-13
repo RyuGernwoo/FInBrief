@@ -27,9 +27,9 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
 | topic+date 카드 캐시 | 완료(mock) |
 | report/card 조회 API | 완료(mock) |
-| Docker/Compose 실행 단위 | 완료 |
+| Docker/Compose 실행 단위 | 완료(multi-stage build) |
 | GitHub Actions CI/CD workflow | 완료 |
-| LiteLLM/Langfuse 실제 연동 | 예정 |
+| LiteLLM/Langfuse 관측성 연동 | 부분 완료 |
 | Discord/Slack 실제 발송 | 예정 |
 
 ## MVP 범위
@@ -123,7 +123,7 @@ ref/              원본 참고 문서
 | `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
 | `.github/workflows/ci.yml` | compile, pytest, Docker build 자동 검증 |
 | `.github/workflows/cd.yml` | GHCR image build/push, GCE Compose 배포, health check, rollback |
-| `Dockerfile` | FinBrief FastAPI 컨테이너 이미지 |
+| `Dockerfile` | builder/runtime multi-stage FinBrief FastAPI 컨테이너 이미지 |
 | `docker-compose.yml` | 로컬/서버 공통 실행 단위 |
 | `.dockerignore` | secret, cache, 문서, 생성 산출물 build context 제외 |
 | `.env.example` | 로컬/배포 환경변수 템플릿 |
@@ -202,6 +202,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
 ## Docker 실행
 
 Docker Desktop 또는 Docker Engine이 실행 중인 상태에서 다음 명령으로 로컬 컨테이너를 빌드하고 실행합니다.
+Dockerfile은 builder stage에서 FinBrief wheel과 의존성 wheel을 생성하고, runtime stage에서 해당 wheelhouse만 설치하는 multi-stage 구조입니다. 기존 Compose 실행 방식과 GCE CD 배포 방식은 그대로 유지됩니다.
 
 ```powershell
 Copy-Item .env.example .env
@@ -252,7 +253,8 @@ CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 Git
 | `SERVICE_PORT`, `APP_IMAGE` | Docker Compose 포트와 이미지 지정 |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase 연결 정보 |
 | `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY`, `FINBRIEF_LLM_STUB` | LLM gateway와 모델 설정 |
-| `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 설정 |
+| `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 기본 설정 |
+| `LANGFUSE_BASE_URL`, `LANGFUSE_OTEL_HOST`, `LANGFUSE_CAPTURE_IO`, `LANGFUSE_FLUSH_ON_SHUTDOWN` | Langfuse SDK/LiteLLM OTEL 세부 설정 |
 | `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
 | `GEMINI_API_KEY`, `FINBRIEF_IMAGE_MODEL`, `FINBRIEF_IMAGE_STUB` | 이미지 생성 설정 |
 | `FINBRIEF_FONT`, `FINBRIEF_REPORT_OUT` | 한글 폰트 경로와 전체 리포트 이미지 출력 경로 |
@@ -267,6 +269,7 @@ CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 Git
 | `NEWS_RSS_URLS` | 뉴스 RSS 실제 수집. 콤마 구분 URL 목록 |
 | `UPSTAGE_API_KEY` | 뉴스 passage/query embedding 실제 생성 |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase DB 적재 |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse 실제 trace 전송 |
 
 `ENABLE_MOCK_DATA=false`로 두면 morning pipeline이 실데이터 모드(`live_data`)로 전환된다.
 이 모드에서 `ingest_news`는 RSS→태깅→Supabase 적재를, `collect_indicators`는 토픽
@@ -288,10 +291,11 @@ docker compose config
 현재 기준 검증 결과:
 
 - `python -m compileall app`: 통과
-- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-ci --disable-warnings`: 96 passed / 1 warning
-- `docker build -t finbrief:local -f Dockerfile .`: 통과
-- `docker run ... finbrief:local` health smoke: `200`, `status=ok`, `mock_data=true`
-- `GET /api/v1/health`: `200`, `status=ok`
+- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-docker-multistage --disable-warnings`: 통과
+- `docker compose config`: 통과
+- `docker build -t finbrief:multi-stage -f Dockerfile .`: Docker Desktop Linux Engine 미실행으로 이번 작업에서 미검증
+- `docker run ... finbrief:multi-stage` health smoke: Docker build 미수행으로 이번 작업에서 미검증
+- `GET /api/v1/health`: 로컬 서버 미실행으로 이번 작업에서 재확인하지 않음
 
 ## 개발 원칙
 
@@ -306,5 +310,5 @@ docker compose config
 1. GitHub Secrets와 GCE VM을 준비한 뒤 `FinBrief CD`를 수동 실행
 2. 첫 배포는 mock/stub mode로 `/api/v1/health` 확인
 3. live secret을 채운 뒤 Supabase/RAG smoke test 수행
-4. LiteLLM 실제 분석 경로와 Langfuse trace 기록 연결
-5. 자동 평가 scaffold와 safety 검증 연결
+4. GCE에서 Langfuse 실제 trace smoke test 수행
+5. 자동 평가 scaffold와 Langfuse score 연결

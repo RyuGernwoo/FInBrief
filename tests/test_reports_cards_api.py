@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.api.dependencies import reset_repository_bundle_cache
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.main import create_app
 
 
@@ -12,9 +12,11 @@ def _client(monkeypatch, tmp_path) -> TestClient:
     reset_repository_bundle_cache()
     monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
     monkeypatch.setenv("FINBRIEF_IMAGE_STUB", "1")
+    monkeypatch.setenv("LANGFUSE_ENABLED", "false")
     monkeypatch.setenv("FINBRIEF_OUT", str(tmp_path / "cards"))
     monkeypatch.setenv("FINBRIEF_IMG_OUT", str(tmp_path / "images"))
     monkeypatch.setenv("FINBRIEF_REPORT_OUT", str(tmp_path / "reports"))
+    get_settings.cache_clear()
     return TestClient(create_app(Settings(app_env="test", enable_mock_data=True)))
 
 
@@ -46,6 +48,31 @@ def test_run_report_endpoint_generates_cards_for_subscriptions(monkeypatch, tmp_
     with Image.open(report_path) as image:
         assert image.format == "PNG"
         assert image.size == (1080, 1080)
+
+
+def test_run_report_endpoint_uses_langfuse_trace_when_enabled(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setenv("LANGFUSE_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.test")
+    get_settings.cache_clear()
+    user_id = "report_user_trace"
+    client.post(
+        f"/api/v1/subscriptions/{user_id}/topics",
+        json={"topic_id": "topic_btc", "channel": "discord"},
+    )
+
+    response = client.post(
+        "/api/v1/reports/run",
+        json={"run_date": "2026-07-10", "dry_run": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["trace_id"]
+    assert not payload["trace_id"].startswith("local_mock_trace_")
 
 
 def test_cards_today_returns_user_subscription_cards(monkeypatch, tmp_path):

@@ -47,6 +47,9 @@ def test_cd_workflow_builds_ghcr_deploys_gce_and_keeps_rollback_state():
     assert "GCE_SSH_KEY" in text
     assert "SUPABASE_URL" in text
     assert "ENABLE_MOCK_DATA" in text
+    assert "LANGFUSE_BASE_URL" in text
+    assert "LANGFUSE_OTEL_HOST" in text
+    assert "LANGFUSE_CAPTURE_IO" in text
     assert "docker compose up -d --force-recreate" in text
     assert "/api/v1/health" in text
     assert "APP_ENV: ${APP_ENV:-prod}" in text
@@ -64,6 +67,11 @@ def test_docker_runtime_contract_matches_finbrief_service():
     dockerignore = read(".dockerignore")
 
     assert "FROM python:3.11-slim" in dockerfile
+    assert "FROM python:3.11-slim AS builder" in dockerfile
+    assert "FROM python:3.11-slim AS runtime" in dockerfile
+    assert "python -m pip wheel --wheel-dir /wheels ." in dockerfile
+    assert "COPY --from=builder /wheels /wheels" in dockerfile
+    assert "--no-index --find-links=/wheels" in dockerfile
     assert "USER finbrief" in dockerfile
     assert "APP_ENV=prod" in dockerfile
     assert "APP_ENV=production" not in dockerfile
@@ -101,6 +109,18 @@ def test_env_example_documents_container_and_stub_variables():
     assert "FINBRIEF_LLM_STUB=1" in text
     assert "FINBRIEF_IMAGE_STUB=1" in text
     assert "FINBRIEF_REPORT_OUT=" in text
+    assert "LANGFUSE_BASE_URL=" in text
+    assert "LANGFUSE_OTEL_HOST=" in text
+    assert "LANGFUSE_CAPTURE_IO=true" in text
+    assert "LANGFUSE_FLUSH_ON_SHUTDOWN=false" in text
+
+
+def test_pyproject_includes_langfuse_observability_dependencies():
+    text = read("pyproject.toml")
+
+    assert '"langfuse>=4.0"' in text
+    assert '"opentelemetry-sdk>=1.0"' in text
+    assert '"opentelemetry-exporter-otlp>=1.0"' in text
 
 
 def test_readme_documents_docker_and_ci_cd_paths():
