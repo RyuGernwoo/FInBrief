@@ -15,6 +15,7 @@ from . import rag
 from .card_schema import CardContent
 from .render import render_card
 from .report_render import render_market_report_image
+from app.core import observability
 from app.core import llm
 from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
 from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
@@ -307,7 +308,8 @@ def dispatch(state: BriefState) -> list[Send] | str:
         topics = state.get("unique_topics", [])
     if not topics:
         return "aggregate_cards"
-    return [Send("build_card", {"topic": t, "run_date": state.get("run_date"), "run_id": state.get("run_id")})
+    return [Send("build_card", {"topic": t, "run_date": state.get("run_date"),
+                                 "run_id": state.get("run_id"), "trace_id": state.get("trace_id")})
             for t in topics]
 
 
@@ -493,9 +495,8 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
             "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (local)",
             "source": "FinBrief"}
 
-
 def _clean_source(s: str) -> str:
-    """RSS 피드 제목을 언론사명으로 정리. '매일경제 : 증권'→'매일경제', '경제 | JTBC News'→'JTBC News'."""
+    """RSS 피드 제목을 언론사명으로 정리. '매일경제 : 증권'->'매일경제', '경제 | JTBC News'->'JTBC News'."""
     s = str(s).strip()
     if "|" in s:
         s = s.split("|")[-1].strip()
@@ -505,7 +506,7 @@ def _clean_source(s: str) -> str:
 
 
 def _evidence_source(news: list[dict]) -> str:
-    """RAG 근거의 실제 뉴스 출처를 중복 없이 표시 (없으면 빈 문자열)."""
+    """RAG 근거의 실제 뉴스 출처를 중복 없이 표시. 없으면 빈 문자열."""
     seen: set[str] = set()
     names: list[str] = []
     for n in news:
@@ -516,11 +517,35 @@ def _evidence_source(news: list[dict]) -> str:
     return "출처: " + ", ".join(names[:3]) if names else ""
 
 
-def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
-    raw = llm.chat_json(llm.SYSTEM_ANALYZE, _user_prompt(topic, data, news)) if llm.use_llm() \
+def _analyze(
+    topic: dict,
+    data: dict,
+    news: list[dict],
+    *,
+    run_id: str | None = None,
+    trace_id: str | None = None,
+) -> dict:
+    metadata = observability.build_llm_metadata(
+        trace_id=trace_id,
+        run_id=run_id,
+        topic_id=str(topic.get("topic_id")),
+        node="analyze_card",
+        tags=["finbrief", "card", "analysis"],
+        extra={"evidence_count": len(news)},
+    )
+    raw = (
+        llm.chat_json(
+            llm.SYSTEM_ANALYZE,
+            _user_prompt(topic, data, news),
+            metadata=metadata,
+        )
+        if llm.use_llm()
         else _local_analysis(topic, data, news)
+    )
+
     card = CardContent(
-        category=topic["category"], index_no="00",
+        category=topic["category"],
+        index_no="00",
         subtitle=_clip(topic["name"], 20),
         headline=_clip_head(raw.get("headline", topic["name"]), 20),
         lead=_clip(raw.get("lead", ""), 45),
@@ -530,17 +555,29 @@ def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
     )
     return card.model_dump()
 
-
 def _fallback_prompt(content: dict) -> str:
     return (f"clean isometric illustration about {content.get('subtitle', '')}, "
             f"muted palette, no text, no letters, no numbers")
 
 
-def _gen_image_prompt(content: dict) -> str:
+def _gen_image_prompt(
+    content: dict,
+    *,
+    run_id: str | None = None,
+    trace_id: str | None = None,
+    topic_id: str | None = None,
+) -> str:
     if llm.use_llm():
         try:
             user = f"topic: {content.get('subtitle')}\nheadline: {content.get('headline')}\nbody: {content.get('body')}"
-            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user)
+            metadata = observability.build_llm_metadata(
+                trace_id=trace_id,
+                run_id=run_id,
+                topic_id=topic_id,
+                node="image_prompt",
+                tags=["finbrief", "card", "image-prompt"],
+            )
+            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user, metadata=metadata)
             return raw.get("prompt") or _fallback_prompt(content)
         except Exception:
             return _fallback_prompt(content)
@@ -596,11 +633,18 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
 def build_card(state: BriefState) -> dict:
     topic = state["topic"]
     run_date = state.get("run_date", "")
+    run_id = state.get("run_id")
+    trace_id = state.get("trace_id")
     try:
         data = _fetch_data(topic)
         news = _retrieve_news(topic)
-        content = _analyze(topic, data, news)
-        img_prompt = _gen_image_prompt(content)
+        content = _analyze(topic, data, news, run_id=run_id, trace_id=trace_id)
+        img_prompt = _gen_image_prompt(
+            content,
+            run_id=run_id,
+            trace_id=trace_id,
+            topic_id=str(topic.get("topic_id")),
+        )
         content["image_url"] = _generate_image(img_prompt, topic["topic_id"], run_date)
         out_path = _compose_card(content, topic["topic_id"], run_date)
         ok, issues = _verify(content, data)
@@ -634,12 +678,43 @@ def _webhook_for(channel: str) -> str:
     return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
 
 
+def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | None) -> dict[str, Any]:
+    """채널 라우팅: discord + channel_id 면 봇 직접 발송, 아니면 웹훅."""
+    if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+        return notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
+    return notifier.send_card(channel=channel, webhook_url=_webhook_for(channel), text=text, image_path=image_path)
+
+
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook 또는 Discord bot)."""
+    """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
+    report_url = state.get("report_url")
     deliveries = []
 
+    # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
+    if report_url:
+        seen_channels: set[tuple[Any, Any]] = set()
+        for sub in subscriptions:
+            channel = _value(sub, "channel")
+            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
+            key = (channel, channel_id)
+            if key in seen_channels:
+                continue
+            seen_channels.add(key)
+            res = _send_to(channel, channel_id, "📊 오늘의 증권 (전체시장)", report_url)
+            deliveries.append({
+                "delivery_id": f"report:{channel_id or _value(sub, 'user_id')}",
+                "user_id": _value(sub, "user_id"),
+                "channel": channel,
+                "topic_id": None,
+                "card_id": None,
+                "status": res.get("status", "failed"),
+                "attempts": 1,
+                "error_code": res.get("error"),
+            })
+
+    # 2) 구독 토픽별 카드 발송.
     for sub in subscriptions:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
@@ -659,30 +734,13 @@ def deliver(state: BriefState) -> dict[str, Any]:
             deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
             continue
 
-        text = notifier.format_card_text(card)
-        image_path = card.get("image_path") or card.get("image_url")
-
-        if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
-            send_result = notifier.send_via_bot(
-                channel_id=channel_id,
-                text=text,
-                image_path=image_path,
-            )
-        else:
-            send_result = notifier.send_card(
-                channel=channel,
-                webhook_url=_webhook_for(channel),
-                text=text,
-                image_path=image_path,
-            )
-
-        deliveries.append(
-            {
-                **base,
-                "status": send_result.get("status", "failed"),
-                "attempts": 1,
-                "error_code": send_result.get("error"),
-            }
-        )
+        res = _send_to(channel, channel_id, notifier.format_card_text(card),
+                       card.get("image_path") or card.get("image_url"))
+        deliveries.append({
+            **base,
+            "status": res.get("status", "failed"),
+            "attempts": 1,
+            "error_code": res.get("error"),
+        })
 
     return {"deliveries": deliveries}
