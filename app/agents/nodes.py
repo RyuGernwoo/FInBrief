@@ -634,12 +634,43 @@ def _webhook_for(channel: str) -> str:
     return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
 
 
+def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | None) -> dict[str, Any]:
+    """채널 라우팅: discord + channel_id 면 봇 직접 발송, 아니면 웹훅."""
+    if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+        return notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
+    return notifier.send_card(channel=channel, webhook_url=_webhook_for(channel), text=text, image_path=image_path)
+
+
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송 (Discord/Slack webhook 또는 Discord bot)."""
+    """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
+    report_url = state.get("report_url")
     deliveries = []
 
+    # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
+    if report_url:
+        seen_channels: set[tuple[Any, Any]] = set()
+        for sub in subscriptions:
+            channel = _value(sub, "channel")
+            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
+            key = (channel, channel_id)
+            if key in seen_channels:
+                continue
+            seen_channels.add(key)
+            res = _send_to(channel, channel_id, "📊 오늘의 증권 (전체시장)", report_url)
+            deliveries.append({
+                "delivery_id": f"report:{channel_id or _value(sub, 'user_id')}",
+                "user_id": _value(sub, "user_id"),
+                "channel": channel,
+                "topic_id": None,
+                "card_id": None,
+                "status": res.get("status", "failed"),
+                "attempts": 1,
+                "error_code": res.get("error"),
+            })
+
+    # 2) 구독 토픽별 카드 발송.
     for sub in subscriptions:
         topic_id = _value(sub, "topic_id")
         user_id = _value(sub, "user_id")
@@ -659,30 +690,13 @@ def deliver(state: BriefState) -> dict[str, Any]:
             deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
             continue
 
-        text = notifier.format_card_text(card)
-        image_path = card.get("image_path") or card.get("image_url")
-
-        if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
-            send_result = notifier.send_via_bot(
-                channel_id=channel_id,
-                text=text,
-                image_path=image_path,
-            )
-        else:
-            send_result = notifier.send_card(
-                channel=channel,
-                webhook_url=_webhook_for(channel),
-                text=text,
-                image_path=image_path,
-            )
-
-        deliveries.append(
-            {
-                **base,
-                "status": send_result.get("status", "failed"),
-                "attempts": 1,
-                "error_code": send_result.get("error"),
-            }
-        )
+        res = _send_to(channel, channel_id, notifier.format_card_text(card),
+                       card.get("image_path") or card.get("image_url"))
+        deliveries.append({
+            **base,
+            "status": res.get("status", "failed"),
+            "attempts": 1,
+            "error_code": res.get("error"),
+        })
 
     return {"deliveries": deliveries}
