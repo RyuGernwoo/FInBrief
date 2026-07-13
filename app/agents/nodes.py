@@ -712,15 +712,11 @@ def aggregate_cards(state: BriefState) -> dict[str, Any]:  # [나]
     }
 
 
-def _webhook_for(channel: str) -> str:
-    return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
-
-
 def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | None) -> dict[str, Any]:
-    """채널 라우팅: discord + channel_id 면 봇 직접 발송, 아니면 웹훅."""
-    if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+    """발송: discord + channel_id 면 봇 직접 발송. 그 외(채널ID 없음/비discord)는 skip."""
+    if channel == "discord" and channel_id:
         return notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
-    return notifier.send_card(channel=channel, webhook_url=_webhook_for(channel), text=text, image_path=image_path)
+    return {"status": "skipped"}
 
 
 def deliver(state: BriefState) -> dict[str, Any]:

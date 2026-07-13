@@ -68,7 +68,7 @@ def test_settings_reject_api_prefix_without_leading_slash():
 
 
 def test_public_settings_exclude_secret_values():
-    settings = Settings(discord_webhook_url="https://example.invalid/secret-token")
+    settings = Settings(upstage_api_key="secret-token")
 
     public_data = settings.public_dict()
 

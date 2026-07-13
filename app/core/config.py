@@ -73,8 +73,6 @@ class Settings(BaseSettings):
     ecos_api_key: SecretStr | None = None
     news_rss_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
-    discord_webhook_url: SecretStr | None = None
-    slack_webhook_url: SecretStr | None = None
     delivery_dry_run: bool = True
 
     @field_validator("api_v1_prefix")
