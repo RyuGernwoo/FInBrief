@@ -8,21 +8,18 @@ def _prepare_offline_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("FINBRIEF_OUT", str(tmp_path / "cards"))
     monkeypatch.setenv("FINBRIEF_IMG_OUT", str(tmp_path / "images"))
     monkeypatch.setenv("DELIVERY_DRY_RUN", "true")
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://x/discord")
-    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://x/slack")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")   # 봇 발송 경로 활성
 
 
 def test_graph_collects_unique_topics_from_repository_subscriptions(monkeypatch, tmp_path):
     _prepare_offline_env(monkeypatch, tmp_path)
-    # webhook 설정 시 notifier 가 발송 경로를 타고 DRY_RUN(기본)이라 "dry_run" 상태가 됨.
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/discord")
-    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://example.test/slack")
+    # 봇 토큰+채널ID 설정 시 발송 경로를 타고 DRY_RUN(기본)이라 "dry_run" 상태가 됨.
     repos = create_memory_repositories()
     topic = repos.topics.get_by_normalized_name("btc")
     first_user = repos.users.get_or_create("discord", "graph_user_001")
-    second_user = repos.users.get_or_create("slack", "graph_user_002")
-    repos.subscriptions.add(first_user.user_id, topic.topic_id, "discord")
-    repos.subscriptions.add(second_user.user_id, topic.topic_id, "slack")
+    second_user = repos.users.get_or_create("discord", "graph_user_002")
+    repos.subscriptions.add(first_user.user_id, topic.topic_id, "discord", "chan-1")
+    repos.subscriptions.add(second_user.user_id, topic.topic_id, "discord", "chan-2")
 
     final = graph.invoke(
         {

@@ -9,10 +9,10 @@ FIXTURE_TOPICS = [
     {"topic_id": "semi", "name": "반도체", "category": "MARKET"},
 ]
 FIXTURE_SUBSCRIPTIONS = [
-    {"user_id": "u1", "channel": "discord", "topic_id": "nasdaq"},
-    {"user_id": "u1", "channel": "discord", "topic_id": "btc"},
-    {"user_id": "u2", "channel": "slack", "topic_id": "nasdaq"},
-    {"user_id": "u2", "channel": "slack", "topic_id": "semi"},
+    {"user_id": "u1", "channel": "discord", "topic_id": "nasdaq", "discord_channel_id": "111"},
+    {"user_id": "u1", "channel": "discord", "topic_id": "btc", "discord_channel_id": "111"},
+    {"user_id": "u2", "channel": "discord", "topic_id": "nasdaq", "discord_channel_id": "222"},
+    {"user_id": "u2", "channel": "discord", "topic_id": "semi", "discord_channel_id": "222"},
 ]
 FIXTURE_INDICATORS = {
     "usdkrw": {"value": 1378.5, "prev": 1372.0, "change_pct": 0.47, "unit": "KRW"},
