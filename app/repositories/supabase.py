@@ -373,9 +373,9 @@ class SupabaseNewsRepository:
             "match_news",
             {
                 "query_embedding": list(self._query_embedding_provider(topic)),
-                "topic_tags": _topic_tags(topic),
+                "topic_tags": _topic_tags(topic),  # 하드필터 아님(soft boost 여지용, 현재 RPC는 미사용)
                 "since": since.isoformat(),
-                "match_count": k,
+                "match_count": k,  # 이제 후보 폭(RAG_CANDIDATES) — 최종 컷은 rag.postprocess_evidence
             },
         ).execute()
         return [map_news_match_result(row) for row in _response_data(response)]
