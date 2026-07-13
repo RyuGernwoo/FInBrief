@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from datetime import date
 from typing import Any
 
@@ -629,7 +630,8 @@ def _gen_image_prompt(
 
 
 def _img_out() -> str:
-    return os.environ.get("FINBRIEF_IMG_OUT") or os.path.join(_DIR, "out_llm")
+    # 기본값을 쓰기가능 임시 디렉터리로. 설치본(site-packages)은 읽기전용이라 makedirs 실패함.
+    return os.environ.get("FINBRIEF_IMG_OUT") or os.path.join(tempfile.gettempdir(), "finbrief_img")
 
 
 def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
@@ -638,7 +640,8 @@ def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
 
 
 def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
-    out = os.environ.get("FINBRIEF_OUT") or os.path.join(os.path.dirname(__file__), "out")
+    # 기본값을 쓰기가능 임시 디렉터리로(설치본 site-packages 는 읽기전용 → PermissionError 방지).
+    out = os.environ.get("FINBRIEF_OUT") or os.path.join(tempfile.gettempdir(), "finbrief_out")
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, f"{run_date}_{topic_id}.png")
     return render_card(content, path)
