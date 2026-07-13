@@ -214,30 +214,38 @@ def _parse_run_date(value: Any) -> date:
 
 
 def collect_topics(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 토픽 → 고유 집합(dedup)."""
+    """[나] 구독 토픽 → 고유 집합(dedup).
+    배치 트리거 옵션: only_external_user 로 특정 계정만, deliver_cards=False 면 카드 생성 스킵."""
     repos: RepositoryBundle | None = state.get("repositories")
+    only_user = state.get("only_external_user")            # external_user_id, None=전체
+    want_cards = state.get("deliver_cards", True)
     if repos is not None:
         subscriptions = repos.subscriptions.list_active()
+        if only_user:
+            # 특정 계정만 필터(테스트용). 존재하는 ID 면 그 user 로, 없으면 매칭 0건.
+            uid = repos.users.get_or_create("discord", only_user).user_id
+            subscriptions = [s for s in subscriptions if s.user_id == uid]
         seen: set[str] = set()
         topics: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
 
-        for subscription in subscriptions:
-            topic_id = subscription.topic_id
-            if topic_id in seen:
-                continue
-            try:
-                topics.append(_graph_topic(repos.topics.get(topic_id)))
-                seen.add(topic_id)
-            except RepositoryNotFoundError as exc:
-                errors.append(
-                    {
-                        "code": exc.code,
-                        "message": str(exc),
-                        "node": "collect_topics",
-                        "topic": topic_id,
-                    }
-                )
+        if want_cards:                                     # 카드 미발송이면 토픽 생성 자체를 스킵(비용 절감)
+            for subscription in subscriptions:
+                topic_id = subscription.topic_id
+                if topic_id in seen:
+                    continue
+                try:
+                    topics.append(_graph_topic(repos.topics.get(topic_id)))
+                    seen.add(topic_id)
+                except RepositoryNotFoundError as exc:
+                    errors.append(
+                        {
+                            "code": exc.code,
+                            "message": str(exc),
+                            "node": "collect_topics",
+                            "topic": topic_id,
+                        }
+                    )
 
         result: dict[str, Any] = {
             "subscriptions": [item.model_dump(mode="json") for item in subscriptions],
@@ -723,7 +731,9 @@ def deliver(state: BriefState) -> dict[str, Any]:
     """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
-    report_url = state.get("report_url")
+    want_report = state.get("deliver_report", True)
+    want_cards = state.get("deliver_cards", True)
+    report_url = state.get("report_url") if want_report else None
     deliveries = []
 
     # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
@@ -748,33 +758,34 @@ def deliver(state: BriefState) -> dict[str, Any]:
                 "error_code": res.get("error"),
             })
 
-    # 2) 구독 토픽별 카드 발송.
-    for sub in subscriptions:
-        topic_id = _value(sub, "topic_id")
-        user_id = _value(sub, "user_id")
-        channel = _value(sub, "channel")
-        channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-        card = by_topic.get(topic_id)
+    # 2) 구독 토픽별 카드 발송 (deliver_cards=False 면 스킵).
+    if want_cards:
+        for sub in subscriptions:
+            topic_id = _value(sub, "topic_id")
+            user_id = _value(sub, "user_id")
+            channel = _value(sub, "channel")
+            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
+            card = by_topic.get(topic_id)
 
-        base = {
-            "delivery_id": f"{user_id}:{topic_id}",
-            "user_id": user_id,
-            "channel": channel,
-            "topic_id": topic_id,
-            "card_id": card.get("card_id") if card else None,
-        }
+            base = {
+                "delivery_id": f"{user_id}:{topic_id}",
+                "user_id": user_id,
+                "channel": channel,
+                "topic_id": topic_id,
+                "card_id": card.get("card_id") if card else None,
+            }
 
-        if not card:
-            deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
-            continue
+            if not card:
+                deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
+                continue
 
-        res = _send_to(channel, channel_id, notifier.format_card_text(card),
-                       card.get("image_path") or card.get("image_url"))
-        deliveries.append({
-            **base,
-            "status": res.get("status", "failed"),
-            "attempts": 1,
-            "error_code": res.get("error"),
-        })
+            res = _send_to(channel, channel_id, notifier.format_card_text(card),
+                           card.get("image_path") or card.get("image_url"))
+            deliveries.append({
+                **base,
+                "status": res.get("status", "failed"),
+                "attempts": 1,
+                "error_code": res.get("error"),
+            })
 
     return {"deliveries": deliveries}

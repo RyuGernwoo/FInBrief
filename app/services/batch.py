@@ -21,7 +21,13 @@ from app.core.schemas import BatchRunResult
 load_dotenv()
 
 
-def run_batch(*, run_date: date | None = None) -> BatchRunResult:
+def run_batch(
+    *,
+    run_date: date | None = None,
+    send_report: bool = True,
+    send_cards: bool = True,
+    only_user: str | None = None,
+) -> BatchRunResult:
     """전체시장 리포트 + 구독 토픽 카드 생성/발송을 1회 실행."""
     # 실 repo + RAG 쿼리 임베딩 provider (뉴스 match_news 에 필요)
     from app.repositories.supabase import create_supabase_repositories
@@ -38,17 +44,32 @@ def run_batch(*, run_date: date | None = None) -> BatchRunResult:
         run_date=run_date,
         run_id=f"batch_{run_date:%Y%m%d}",
         dry_run=notifier.dry_run(),
+        send_report=send_report,
+        send_cards=send_cards,
+        only_user=only_user,
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="FinBrief 아침 배치 실행")
     parser.add_argument("--dry-run", action="store_true", help="발송 없이 상태만(DELIVERY_DRY_RUN=true 강제)")
+    parser.add_argument("--mock", action="store_true", help="목업/fixture 데이터로 실행(ENABLE_MOCK_DATA=true)")
+    parser.add_argument("--no-report", action="store_true", help="지표 리포트 발송 안 함")
+    parser.add_argument("--no-cards", action="store_true", help="카드뉴스 발송 안 함(리포트만 테스트)")
+    parser.add_argument("--only-user", default="", help="특정 계정만(디스코드 external_user_id). 빈값=전체")
     args = parser.parse_args()
     if args.dry_run:
         os.environ["DELIVERY_DRY_RUN"] = "true"
+    if args.mock:
+        os.environ["ENABLE_MOCK_DATA"] = "true"
+        from app.core.config import get_settings
+        get_settings.cache_clear()   # 이미 캐시된 설정이 있으면 무효화
 
-    result = run_batch()
+    result = run_batch(
+        send_report=not args.no_report,
+        send_cards=not args.no_cards,
+        only_user=args.only_user or None,
+    )
     print(
         f"[batch] status={result.status} "
         f"cards={len(result.generated_cards)} "
