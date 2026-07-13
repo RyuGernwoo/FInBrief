@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from app.agents.pipeline import run_morning_pipeline
 from app.core.env import load_dotenv
 from app.core.schemas import BatchRunResult
+
+# 아침 브리핑은 KST 기준. 컨테이너는 UTC 라 date.today() 를 쓰면 07:00 KST(=전날 22:00 UTC)에
+# 하루 밀린 날짜가 잡힌다 → run_date 를 KST 날짜로 계산.
+KST = timezone(timedelta(hours=9))
 
 # standalone 실행 시 .env 로드(토큰/DB 키가 os.getenv 로 조회되도록).
 # 컨테이너는 env_file 로 이미 주입되어 setdefault 로 무시된다.
@@ -33,7 +37,7 @@ def run_batch(
     from app.repositories.supabase import create_supabase_repositories
     from app.tools.embedding.upstage import UpstageEmbeddingProvider
 
-    run_date = run_date or date.today()
+    run_date = run_date or datetime.now(KST).date()
     repos = create_supabase_repositories(
         query_embedding_provider=UpstageEmbeddingProvider().embed_query
     )
