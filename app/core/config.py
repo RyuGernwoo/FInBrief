@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_capture_io: bool = True
+    langfuse_flush_on_shutdown: bool = False
 
     fred_api_key: SecretStr | None = None
     ecos_api_key: SecretStr | None = None
@@ -77,6 +79,7 @@ class Settings(BaseSettings):
             "default_timezone": self.default_timezone,
             "enable_mock_data": self.enable_mock_data,
             "langfuse_enabled": self.langfuse_enabled,
+            "langfuse_capture_io": self.langfuse_capture_io,
             "delivery_dry_run": self.delivery_dry_run,
         }
 

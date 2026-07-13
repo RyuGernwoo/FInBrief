@@ -1,4 +1,18 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+RUN python -m pip install --upgrade pip wheel
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+
+RUN python -m pip wheel --wheel-dir /wheels .
+
+FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,14 +32,14 @@ RUN apt-get update \
     && groupadd --system finbrief \
     && useradd --system --gid finbrief --home-dir /app finbrief
 
-COPY pyproject.toml README.md ./
-COPY app ./app
+COPY --from=builder /wheels /wheels
 COPY data/default_topics.json ./data/default_topics.json
 COPY schemas/finbrief_state.schema.json ./schemas/finbrief_state.schema.json
 COPY evals/finbrief_eval_set.schema.json ./evals/finbrief_eval_set.schema.json
 
 RUN python -m pip install --upgrade pip \
-    && python -m pip install --no-cache-dir . \
+    && python -m pip install --no-cache-dir --no-index --find-links=/wheels finbrief \
+    && rm -rf /wheels \
     && mkdir -p /app/reports /app/app/agents/out /app/app/agents/out_llm /app/app/agents/out_reports \
     && chown -R finbrief:finbrief /app
 

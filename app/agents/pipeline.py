@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 
 from app.agents.graph import graph
+from app.core import observability
 from app.core.config import get_settings
 from app.core.schemas import (
     BatchRunResult,
@@ -88,20 +89,36 @@ def run_morning_pipeline(
     dry_run: bool = True,
 ) -> BatchRunResult:
     runtime_run_id = run_id or f"run_{run_date:%Y%m%d}_mock"
-    final = graph.invoke(
-        {
-            "run_id": runtime_run_id,
-            "run_date": run_date.isoformat(),
-            "status": "queued",
-            "repositories": repos,
-            "cards": [],
-            "deliveries": [],
-            "errors": [],
-            "dry_run": dry_run,
-            # Supabase/Upstage 실데이터 모드는 mock 비활성화 시에만 켠다.
-            "live_data": not get_settings().enable_mock_data,
-        }
-    )
+    settings = get_settings()
+    with observability.report_trace(
+        run_id=runtime_run_id,
+        run_date=run_date.isoformat(),
+        settings=settings,
+        metadata={"dry_run": dry_run},
+    ) as (trace_id, trace):
+        final = graph.invoke(
+            {
+                "run_id": runtime_run_id,
+                "run_date": run_date.isoformat(),
+                "status": "queued",
+                "trace_id": trace_id,
+                "repositories": repos,
+                "cards": [],
+                "deliveries": [],
+                "errors": [],
+                "dry_run": dry_run,
+                # Supabase/Upstage 실데이터 모드는 mock 비활성화 시에만 켠다.
+                "live_data": not settings.enable_mock_data,
+            }
+        )
+        trace.update(
+            output={
+                "status": final.get("status"),
+                "generated_count": final.get("generated_count"),
+                "reused_count": final.get("reused_count"),
+                "error_count": len(final.get("errors", [])),
+            }
+        )
     indicators = [
         _indicator_from_state(item, run_date)
         for item in final.get("indicators", [])
