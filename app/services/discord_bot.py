@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 
 from app.core.env import load_dotenv
+from app.services import chatbot
 from app.services.chatbot import handle
 from app.services.subscription_service import SubscriptionService
 from app.repositories.memory import create_memory_repositories      # 로컬 개발용(재시작 시 초기화)
@@ -40,7 +41,8 @@ def _service() -> SubscriptionService:
 _gid = os.getenv("DISCORD_GUILD_ID")
 GUILD = discord.Object(id=int(_gid)) if _gid else None   # 설정 시 테스트 서버 즉시 반영용
 
-intents = discord.Intents.default()   # 슬래시만 쓰면 기본으로 충분
+intents = discord.Intents.default()
+intents.message_content = True        # @멘션/DM 대화형 메시지 내용 수신(포털에서도 ON 필요)
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -62,6 +64,34 @@ async def on_ready():
         await tree.sync(guild=GUILD)
     await tree.sync()                        # 전역 등록 → 봇이 들어간 모든 서버(전파 최대 ~1시간)
     print(f"✅ logged in as {client.user}")
+
+
+@client.event
+async def on_message(message: discord.Message):
+    # 슬래시(/finbrief)는 그대로 두고 @멘션/DM 대화형을 병행. 노이즈·프라이버시로 멘션/DM만 반응.
+    if message.author.bot:
+        return
+    is_dm = message.guild is None
+    mentioned = client.user in message.mentions
+    if not (is_dm or mentioned):
+        return
+    text = message.content
+    for tok in (f"<@{client.user.id}>", f"<@!{client.user.id}>"):
+        text = text.replace(tok, "")
+    text = text.strip()
+    async with message.channel.typing():     # LLM 파싱 지연 동안 "입력 중…"
+        res = await asyncio.to_thread(handle, _service(), "discord",
+                                      str(message.author.id), text, str(message.channel.id))
+    await message.reply(res["reply"], mention_author=False)
+
+
+@client.event
+async def on_guild_join(guild: discord.Guild):
+    # 서버 초대되면 사용법 자동 안내(첫 등록 마찰 완화). 발송 권한 없으면 조용히 skip.
+    ch = guild.system_channel or next(
+        (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None)
+    if ch:
+        await ch.send(chatbot.welcome_text(_service()))
 
 
 if __name__ == "__main__":
