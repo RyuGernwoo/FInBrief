@@ -629,7 +629,9 @@ def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
 
 
 def _nums(s: str) -> list[str]:
-    return re.findall(r"-?\d+\.?\d*", s or "")
+    # 천단위 콤마(26,282)를 먼저 제거 — 안 하면 정규식이 26·282로 쪼개 지표 매칭 실패.
+    s = re.sub(r"(?<=\d),(?=\d)", "", s or "")
+    return re.findall(r"-?\d+\.?\d*", s)
 
 
 def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
@@ -638,7 +640,7 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
         issues.append("no-source")
     if not content.get("body"):
         issues.append("no-body")
-    if len(content.get("headline", "")) > 14:
+    if len(content.get("headline", "")) > 20:   # 카드 headline max(card_schema)와 정합
         issues.append("headline-overflow")
     if len(content.get("lead", "")) > 45:
         issues.append("lead-overflow")
