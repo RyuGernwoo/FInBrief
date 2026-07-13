@@ -2,7 +2,7 @@
 
 FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 에이전트입니다. 매일 아침 주요 거시 금융 지표와 경제 뉴스를 수집하고, 전체 시장 리포트와 사용자 관심 토픽별 카드뉴스를 생성한 뒤 Discord 또는 Slack으로 전달하는 것을 MVP 목표로 합니다.
 
-현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구, 구독 API, repository 기반 LangGraph mock 리포트/카드 생성 파이프라인이 준비되어 있습니다.
+현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구, 구독 API, Discord 관리 챗봇, repository 기반 LangGraph mock 리포트/카드 생성 파이프라인이 준비되어 있습니다.
 
 ## 현재 구현 상태
 
@@ -22,6 +22,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 | Supabase ingestion payload adapter | 완료 |
 | 기본 테스트 | 완료 |
 | 구독 API | 완료 |
+| Discord 관리 챗봇 persona/대화형 UX | 완료 |
 | 선택 토픽 ingestion API | 완료 |
 | 주요 지표 전체 리포트 이미지 생성 | 완료(mock) |
 | LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
@@ -37,6 +38,7 @@ FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 
 포함 기능:
 
 - 사용자 관심 토픽 구독 관리
+- Discord slash command 기반 자연어 구독 관리
 - free tier 토픽 5개 제한
 - 거시 지표와 경제 뉴스 수집
 - 뉴스 임베딩과 Supabase pgvector 기반 RAG 검색
@@ -105,6 +107,9 @@ ref/              원본 참고 문서
 | `app/agents/graph.py`, `app/agents/nodes.py` | repository 구독 기반 mock 리포트/카드 생성 graph |
 | `app/agents/report_catalog.py`, `app/agents/report_render.py` | 21개 주요 지표 전체 리포트 PNG 생성 |
 | `app/services/topic_ingestion.py` | 선택 토픽 기준 FRED/yfinance/ECOS/RSS 수집, 뉴스 필터링, embedding 저장 service |
+| `app/services/chatbot.py` | Discord 관리 챗봇 intent parsing과 구독 tool 호출 |
+| `app/services/chatbot_persona.py`, `app/services/chatbot_responses.py`, `app/services/chatbot_suggestions.py` | 챗봇 persona, 안전 응답, 후보 토픽 제안 |
+| `app/services/discord_bot.py` | Discord slash command 엔트리포인트 |
 | `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
 | `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
 | `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
@@ -184,6 +189,34 @@ curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
   -H "Content-Type: application/json" `
   -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true}"
 curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10"
+```
+
+## Discord 관리 챗봇
+
+Discord 챗봇은 `/finbrief` slash command로 사용자의 자연어 메시지를 받아 관심 토픽을 관리합니다. 응답 persona는 `브리핑 메이트`이며, 투자 판단이나 매수·매도 지시는 거절하고 구독 가능한 브리핑 토픽으로 안내합니다.
+
+대표 입력:
+
+```text
+/finbrief message: 나스닥 구독해줘
+/finbrief message: 내 토픽 보여줘
+/finbrief message: 비트코인 취소해줘
+/finbrief message: 금리 구독
+/finbrief message: 처음인데 뭐 받아보면 좋아?
+```
+
+주요 동작:
+
+- `구독`, `추가`, `등록` 표현은 토픽 추가로 처리합니다.
+- `삭제`, `취소`, `해지` 표현은 토픽 삭제로 처리합니다.
+- `내 토픽`, `목록`, `조회` 표현은 현재 구독 목록을 보여줍니다.
+- `금리`, `환율`처럼 후보가 여러 개인 키워드는 바로 저장하지 않고 후보 토픽을 제시합니다.
+- `사야 해?`, `매수`, `매도`, `목표가`처럼 투자 판단을 요구하는 표현은 차단하고 브리핑 구독 예시로 전환합니다.
+
+로컬에서 Discord bot을 직접 실행할 때는 `.env`에 `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`를 설정한 뒤 실행합니다.
+
+```powershell
+python -m app.services.discord_bot
 ```
 
 실제 Supabase/RAG 적재 모드에서는 `.env`에 `ENABLE_MOCK_DATA=false`, Supabase service role key,
