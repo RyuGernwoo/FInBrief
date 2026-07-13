@@ -274,7 +274,11 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
         item = dict(graph_topic)
         try:
             topic_model = repos.topics.get(graph_topic["topic_id"])
-            evidence = rag.postprocess_evidence(repos.news.match(topic_model, since, rag.RAG_K))
+            # 후보는 넓게(RAG_CANDIDATES), 최종은 postprocess 가 RAG_K 로 컷(threshold·다양성·top-k).
+            evidence = rag.postprocess_evidence(
+                repos.news.match(topic_model, since, rag.RAG_CANDIDATES),
+                k=rag.RAG_K,
+            )
             item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
         except Exception as exc:
             item["evidence"] = []

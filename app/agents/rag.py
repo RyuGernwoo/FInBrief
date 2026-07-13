@@ -15,6 +15,7 @@ from app.core.schemas import NewsEvidence
 
 RAG_SINCE_DAYS = 3
 RAG_K = 5
+RAG_CANDIDATES = 40   # match_news 에서 넓게 받아오고, postprocess 가 RAG_K 로 컷
 RAG_MIN_SIMILARITY = 0.2
 RAG_MAX_PER_SOURCE = 2
 

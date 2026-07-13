@@ -150,11 +150,11 @@ class MemoryNewsRepository:
             if published_at < since_utc:
                 continue
 
+            # 하드 제외 없음: 태그 안 겹쳐도 후보 유지 (겹침은 soft 신호로만).
+            # 실 임베딩이 없는 테스트 백엔드라 코사인 대신 태그 겹침으로 근사.
             tags = {tag.casefold() for tag in document.tags}
-            if keywords and not tags.intersection(keywords):
-                continue
-
-            similarity = 1.0 if tags.intersection(keywords) else 0.5
+            overlap = bool(keywords) and bool(tags.intersection(keywords))
+            similarity = 0.9 if overlap else 0.5
             matches.append((similarity, published_at, document))
 
         matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
