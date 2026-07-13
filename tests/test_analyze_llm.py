@@ -23,3 +23,48 @@ def test_analyze_llm_path(monkeypatch):
                          [{"title": "t", "snippet": "s"}])
     CardContent(**out)                 # 재검증
     assert len(out["headline"]) <= 14  # 클립 확인
+
+
+def test_chat_json_passes_langfuse_metadata(monkeypatch):
+    from app.core import llm
+    import litellm
+
+    calls = {}
+
+    class _R:
+        class _C:
+            class _M:
+                content = json.dumps({"headline": "비트코인 반등", "lead": "위험자산 선호 회복",
+                                      "body": "본문 내용", "source": "예시통신"})
+            message = _M()
+        choices = [_C()]
+
+    def _completion(**kwargs):
+        calls.update(kwargs)
+        return _R()
+
+    monkeypatch.setenv("LANGFUSE_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.test")
+    monkeypatch.setattr(litellm, "completion", _completion)
+
+    result = llm.chat_json(
+        "system",
+        "user",
+        metadata={
+            "trace_id": "trace-abc",
+            "session_id": "run_abc",
+            "generation_name": "analyze_card:topic_btc",
+            "tags": ["finbrief", "test"],
+            "secret_token": "hidden",
+        },
+    )
+
+    assert result["headline"] == "비트코인 반등"
+    assert calls["metadata"]["trace_id"] == "trace-abc"
+    assert calls["metadata"]["session_id"] == "run_abc"
+    assert calls["metadata"]["generation_name"] == "analyze_card:topic_btc"
+    assert calls["metadata"]["tags"] == ["finbrief", "test"]
+    assert calls["metadata"]["secret_token"] == "[redacted]"
+    assert "langfuse_otel" in litellm.callbacks

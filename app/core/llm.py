@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
+
+from app.core import observability
 
 SYSTEM_ANALYZE = (
     "너는 금융 카드뉴스 편집자다. 주어진 지표 수치와 뉴스 근거만 사용해 "
@@ -43,8 +46,9 @@ def _resolve_model() -> tuple[str, dict]:
     return model, extra
 
 
-def chat_json(system: str, user: str) -> dict:
+def chat_json(system: str, user: str, *, metadata: dict[str, Any] | None = None) -> dict:
     import litellm
+    observability.configure_litellm_callbacks(litellm)
     model, extra = _resolve_model()
     kwargs: dict = dict(
         model=model,
@@ -54,6 +58,8 @@ def chat_json(system: str, user: str) -> dict:
         timeout=30,
         **extra,
     )
+    if metadata:
+        kwargs["metadata"] = observability.sanitize_metadata(metadata)
     fb = os.getenv("FINBRIEF_LLM_FALLBACK") or os.getenv("LITELLM_FALLBACK_MODEL") or ""
     if fb:
         kwargs["fallbacks"] = [{"model": fb}]

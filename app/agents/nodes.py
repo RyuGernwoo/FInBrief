@@ -15,6 +15,7 @@ from . import rag
 from .card_schema import CardContent
 from .render import render_card
 from .report_render import render_market_report_image
+from app.core import observability
 from app.core import llm
 from app.core.schemas import CardArtifact, NewsEvidence, Topic, TopicAnalysis
 from app.repositories.protocols import RepositoryBundle, RepositoryNotFoundError
@@ -296,7 +297,8 @@ def dispatch(state: BriefState) -> list[Send] | str:
         topics = state.get("unique_topics", [])
     if not topics:
         return "aggregate_cards"
-    return [Send("build_card", {"topic": t, "run_date": state.get("run_date"), "run_id": state.get("run_id")})
+    return [Send("build_card", {"topic": t, "run_date": state.get("run_date"),
+                                 "run_id": state.get("run_id"), "trace_id": state.get("trace_id")})
             for t in topics]
 
 
@@ -439,8 +441,23 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
             "source": "FinBrief"}
 
 
-def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
-    raw = llm.chat_json(llm.SYSTEM_ANALYZE, _user_prompt(topic, data, news)) if llm.use_llm() \
+def _analyze(
+    topic: dict,
+    data: dict,
+    news: list[dict],
+    *,
+    run_id: str | None = None,
+    trace_id: str | None = None,
+) -> dict:
+    metadata = observability.build_llm_metadata(
+        trace_id=trace_id,
+        run_id=run_id,
+        topic_id=str(topic.get("topic_id")),
+        node="analyze_card",
+        tags=["finbrief", "card", "analysis"],
+        extra={"evidence_count": len(news)},
+    )
+    raw = llm.chat_json(llm.SYSTEM_ANALYZE, _user_prompt(topic, data, news), metadata=metadata) if llm.use_llm() \
         else _local_analysis(topic, data, news)
     card = CardContent(
         category=topic["category"], index_no="00",
@@ -459,11 +476,24 @@ def _fallback_prompt(content: dict) -> str:
             f"muted palette, no text, no letters, no numbers")
 
 
-def _gen_image_prompt(content: dict) -> str:
+def _gen_image_prompt(
+    content: dict,
+    *,
+    run_id: str | None = None,
+    trace_id: str | None = None,
+    topic_id: str | None = None,
+) -> str:
     if llm.use_llm():
         try:
             user = f"topic: {content.get('subtitle')}\nheadline: {content.get('headline')}\nbody: {content.get('body')}"
-            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user)
+            metadata = observability.build_llm_metadata(
+                trace_id=trace_id,
+                run_id=run_id,
+                topic_id=topic_id,
+                node="image_prompt",
+                tags=["finbrief", "card", "image-prompt"],
+            )
+            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user, metadata=metadata)
             return raw.get("prompt") or _fallback_prompt(content)
         except Exception:
             return _fallback_prompt(content)
@@ -519,11 +549,18 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
 def build_card(state: BriefState) -> dict:
     topic = state["topic"]
     run_date = state.get("run_date", "")
+    run_id = state.get("run_id")
+    trace_id = state.get("trace_id")
     try:
         data = _fetch_data(topic)
         news = _retrieve_news(topic)
-        content = _analyze(topic, data, news)
-        img_prompt = _gen_image_prompt(content)
+        content = _analyze(topic, data, news, run_id=run_id, trace_id=trace_id)
+        img_prompt = _gen_image_prompt(
+            content,
+            run_id=run_id,
+            trace_id=trace_id,
+            topic_id=str(topic.get("topic_id")),
+        )
         content["image_url"] = _generate_image(img_prompt, topic["topic_id"], run_date)
         out_path = _compose_card(content, topic["topic_id"], run_date)
         ok, issues = _verify(content, data)
