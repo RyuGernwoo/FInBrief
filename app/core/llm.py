@@ -10,7 +10,8 @@ import json
 import os
 from typing import Any
 
-from app.core import observability
+from app.core import llm_guardrails, observability
+from app.core.config import get_settings
 
 SYSTEM_ANALYZE = (
     "너는 금융 카드뉴스 편집자다. 주어진 지표 수치와 뉴스 근거만 사용해 "
@@ -31,7 +32,8 @@ def use_llm() -> bool:
 
 def _resolve_model() -> tuple[str, dict]:
     """모델명과 litellm 호출용 provider kwargs(api_base·api_key)를 결정한다."""
-    raw = os.getenv("FINBRIEF_LLM_MODEL") or os.getenv("LITELLM_MODEL") or "upstage/solar-pro"
+    cfg = get_settings()
+    raw = os.getenv("FINBRIEF_LLM_MODEL") or cfg.litellm_model or "upstage/solar-pro"
     extra: dict = {}
     name = raw.split("/", 1)[1] if "/" in raw else raw
     is_solar = raw.startswith("upstage/") or ("/" not in raw and raw.startswith("solar"))
@@ -49,22 +51,49 @@ def _resolve_model() -> tuple[str, dict]:
     return model, extra
 
 
-def chat_json(system: str, user: str, *, metadata: dict[str, Any] | None = None) -> dict:
+def chat_json(
+    system: str,
+    user: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+    guardrail_profile: str = "generic",
+) -> dict:
     import litellm
+
+    cfg = get_settings()
     observability.configure_litellm_callbacks(litellm)
     model, extra = _resolve_model()
+    safe_system, safe_user = llm_guardrails.prepare_prompt(system, user, cfg)
+    fallback_model = os.getenv("FINBRIEF_LLM_FALLBACK") or cfg.litellm_fallback_model or ""
+    request_metadata = {
+        **(metadata or {}),
+        "llm_primary_model": os.getenv("FINBRIEF_LLM_MODEL") or cfg.litellm_model,
+        "llm_fallback_model": fallback_model or None,
+        "llm_timeout_seconds": cfg.finbrief_llm_timeout_seconds,
+        "llm_num_retries": cfg.finbrief_llm_num_retries,
+        "guardrail_enabled": cfg.finbrief_llm_guardrail_enabled,
+        "guardrail_profile": guardrail_profile,
+        "fallback_configured": bool(fallback_model),
+    }
     kwargs: dict = dict(
         model=model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        messages=[{"role": "system", "content": safe_system}, {"role": "user", "content": safe_user}],
         response_format={"type": "json_object"},
-        num_retries=2,
-        timeout=30,
+        num_retries=cfg.finbrief_llm_num_retries,
+        timeout=cfg.finbrief_llm_timeout_seconds,
         **extra,
     )
-    if metadata:
-        kwargs["metadata"] = observability.sanitize_metadata(metadata)
-    fb = os.getenv("FINBRIEF_LLM_FALLBACK") or os.getenv("LITELLM_FALLBACK_MODEL") or ""
-    if fb:
-        kwargs["fallbacks"] = [{"model": fb}]
+    kwargs["metadata"] = observability.sanitize_metadata(
+        {k: v for k, v in request_metadata.items() if v is not None}
+    )
+    if fallback_model:
+        kwargs["fallbacks"] = [{"model": fallback_model}]
     resp = litellm.completion(**kwargs)
-    return json.loads(resp.choices[0].message.content)
+    try:
+        raw = json.loads(resp.choices[0].message.content)
+    except Exception as exc:
+        raise llm_guardrails.GuardrailViolation(
+            "schema_error",
+            {"error": str(exc)},
+        ) from exc
+    return llm_guardrails.validate_json_payload(raw, profile=guardrail_profile, settings=cfg)

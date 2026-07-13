@@ -253,6 +253,9 @@ CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 Git
 | `SERVICE_PORT`, `APP_IMAGE` | Docker Compose 포트와 이미지 지정 |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase 연결 정보 |
 | `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY`, `FINBRIEF_LLM_STUB` | LLM gateway와 모델 설정 |
+| `FINBRIEF_LLM_TIMEOUT_SECONDS`, `FINBRIEF_LLM_NUM_RETRIES` | LiteLLM 호출 timeout/retry 설정 |
+| `FINBRIEF_LLM_GUARDRAIL_ENABLED`, `FINBRIEF_LLM_FORBIDDEN_TERMS`, `FINBRIEF_LLM_PII_MASKING` | 앱 내부 금융 안전 guardrail과 PII masking |
+| `LITELLM_PROXY_URL`, `LITELLM_MASTER_KEY`, `LITELLM_GUARDRAILS` | 선택적 LiteLLM Proxy 전환 설정 |
 | `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 기본 설정 |
 | `LANGFUSE_BASE_URL`, `LANGFUSE_OTEL_HOST`, `LANGFUSE_CAPTURE_IO`, `LANGFUSE_FLUSH_ON_SHUTDOWN` | Langfuse SDK/LiteLLM OTEL 세부 설정 |
 | `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
@@ -274,6 +277,19 @@ CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 Git
 `ENABLE_MOCK_DATA=false`로 두면 morning pipeline이 실데이터 모드(`live_data`)로 전환된다.
 이 모드에서 `ingest_news`는 RSS→태깅→Supabase 적재를, `collect_indicators`는 토픽
 `source_mapping` 기반 지표 수집을, `retrieve_evidence`는 `match_news` RPC(RAG)를 실제로 조회한다.
+
+### LiteLLM Guardrail / Fallback
+
+FinBrief는 MVP 기준으로 LiteLLM Python SDK 직접 호출을 사용합니다. `LITELLM_FALLBACK_MODEL`을 설정하면 `chat_json()` 호출에 LiteLLM fallback 후보가 전달되고, 모델 호출 실패나 guardrail 위반이 발생하면 카드 분석 노드는 deterministic local template로 복구합니다.
+
+기본 guardrail은 앱 내부에서 수행됩니다.
+
+- email/webhook/API key 형태의 민감 문자열을 LLM 입력과 출력 JSON에서 masking
+- 카드 분석 결과의 필수 JSON key 확인
+- `매수`, `매도`, `목표가`, `확정 수익` 등 투자 조언성 금칙어 차단
+- 차단 시 전체 pipeline 중단 대신 local card fallback 사용
+
+LiteLLM Proxy 기반 guardrail은 선택 사항입니다. 예시 설정은 `config/litellm_config.yaml.example`에 있으며, 별도 Proxy 서비스를 운영할 때만 사용합니다.
 `true`(기본값)에서는 fixture로 동작하므로 키 없이 로컬/테스트가 가능하다.
 
 선택 토픽 적재 API는 `ENABLE_MOCK_DATA=false`에서 Supabase에 실제 upsert를 수행한다.
