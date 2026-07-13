@@ -37,6 +37,39 @@ services:
       retries: 3
       start_period: 10s
 
+  finbrief-bot:
+    image: ${APP_IMAGE:-finbrief:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finbrief-bot
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+    command: ["python", "-m", "app.services.discord_bot"]
+    healthcheck:
+      disable: true
+
+  finbrief-scheduler:
+    image: ${APP_IMAGE:-finbrief:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finbrief-scheduler
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      FINBRIEF_BATCH_HOUR: ${FINBRIEF_BATCH_HOUR:-7}
+    command: ["python", "-m", "app.services.scheduler"]
+    healthcheck:
+      disable: true
+
 volumes:
   finbrief_reports:
   finbrief_agent_outputs:

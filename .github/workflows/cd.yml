@@ -269,6 +269,31 @@ jobs:
                 retries: 3
                 start_period: 10s
 
+            finbrief-bot:
+              image: ${APP_IMAGE:?APP_IMAGE is required}
+              container_name: finbrief-bot
+              restart: unless-stopped
+              env_file:
+                - .env
+              environment:
+                APP_ENV: ${APP_ENV:-prod}
+              command: ["python", "-m", "app.services.discord_bot"]
+              healthcheck:
+                disable: true
+
+            finbrief-scheduler:
+              image: ${APP_IMAGE:?APP_IMAGE is required}
+              container_name: finbrief-scheduler
+              restart: unless-stopped
+              env_file:
+                - .env
+              environment:
+                APP_ENV: ${APP_ENV:-prod}
+                FINBRIEF_BATCH_HOUR: ${FINBRIEF_BATCH_HOUR:-7}
+              command: ["python", "-m", "app.services.scheduler"]
+              healthcheck:
+                disable: true
+
           volumes:
             finbrief_reports:
           COMPOSE
@@ -351,6 +376,15 @@ jobs:
             echo "DEPLOY_IMAGE is required."
             exit 1
           fi
+
+          # 디스크 여유 확보: 배포마다 sha 태그 이미지가 누적되어 인스턴스 디스크가
+          # 가득 차면 docker login 조차 실패한다("no space left on device").
+          # 실행 중 컨테이너가 참조하는 이미지는 보존되므로 안전하다.
+          echo "[cleanup] reclaiming disk before pull"
+          docker container prune -f || true
+          docker image prune -af || true
+          docker builder prune -af || true
+          df -h / || true
 
           printf '%s' "$GHCR_TOKEN" \
             | docker login "$REGISTRY" -u "$GHCR_USERNAME" --password-stdin

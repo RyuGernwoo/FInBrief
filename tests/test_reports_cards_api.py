@@ -38,7 +38,8 @@ def test_run_report_endpoint_generates_cards_for_subscriptions(monkeypatch, tmp_
     assert payload["status"] == "completed"
     assert payload["generated_cards"] == 1
     assert payload["reused_cards"] == 0
-    assert payload["delivery_results"] == 1
+    # 전체시장 리포트(채널당 1회) + 구독 카드(1) = 2
+    assert payload["delivery_results"] == 2
     assert payload["trace_id"].startswith("local_mock_trace_")
     assert "투자 조언이 아닌" in payload["disclaimer"]
     assert payload["report_url"]

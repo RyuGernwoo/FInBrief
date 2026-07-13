@@ -9,28 +9,14 @@ import os
 import discord
 from discord import app_commands
 
+from app.core.env import load_dotenv
 from app.services.chatbot import handle
 from app.services.subscription_service import SubscriptionService
 from app.repositories.memory import create_memory_repositories      # 로컬 개발용(재시작 시 초기화)
 from app.repositories.supabase import create_supabase_repositories  # 실 DB(영속)
 
 
-def _load_dotenv() -> None:
-    """의존성 없이 repo 루트 .env 를 os.environ 로 로드(이미 설정된 값은 유지)."""
-    env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
-    try:
-        with open(env_path, encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip())
-    except FileNotFoundError:
-        pass
-
-
-_load_dotenv()
+load_dotenv()
 
 # repo 번들: SUPABASE_URL 있으면 실 DB(영속), 없으면 memory(재시작 시 초기화).
 # 봇은 news.match 를 안 쓰므로 query_embedding_provider 불필요.
@@ -51,14 +37,15 @@ def _service() -> SubscriptionService:
     return SubscriptionService(_repos())
 
 
-GUILD = discord.Object(id=int(os.environ["DISCORD_GUILD_ID"]))
+_gid = os.getenv("DISCORD_GUILD_ID")
+GUILD = discord.Object(id=int(_gid)) if _gid else None   # 설정 시 테스트 서버 즉시 반영용
 
 intents = discord.Intents.default()   # 슬래시만 쓰면 기본으로 충분
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
-@tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)", guild=GUILD)
+@tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)")
 @app_commands.describe(message="원하는 걸 자연어로: 구독/조회/취소")
 async def finbrief(interaction: discord.Interaction, message: str):
     # LLM intent 파싱이 3초를 넘길 수 있어 먼저 defer(15분 확보), 블로킹 handle 은 스레드에서.
@@ -70,7 +57,10 @@ async def finbrief(interaction: discord.Interaction, message: str):
 
 @client.event
 async def on_ready():
-    await tree.sync(guild=GUILD)      # 길드 sync = 즉시 반영
+    if GUILD is not None:                    # 개발용 테스트 서버: 즉시 반영
+        tree.copy_global_to(guild=GUILD)     # 전역 커맨드를 테스트 길드에 복사
+        await tree.sync(guild=GUILD)
+    await tree.sync()                        # 전역 등록 → 봇이 들어간 모든 서버(전파 최대 ~1시간)
     print(f"✅ logged in as {client.user}")
 
 
