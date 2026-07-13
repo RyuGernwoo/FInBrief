@@ -15,6 +15,7 @@ CLAUDE.md
 !.env.example
 *.pem
 *.key
+finbrief_gce_deploy*
 
 # Python
 __pycache__/

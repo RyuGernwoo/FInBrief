@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    APP_ENV=production \
+    APP_ENV=prod \
     ENABLE_MOCK_DATA=true \
     DELIVERY_DRY_RUN=true \
     FINBRIEF_LLM_STUB=1 \
