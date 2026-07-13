@@ -527,9 +527,10 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
     unit = _display_unit(topic, data)
     chg = data.get("change_pct", 0.0) or 0.0
     arrow = "상승" if chg > 0 else ("하락" if chg < 0 else "보합")
+    snippet = (news[0].get("snippet") or news[0].get("title") or "").strip() if news else ""
     return {"headline": f"{topic['name']} {arrow}",
             "lead": f"{topic['name']} {_fmt_value(data.get('value'), unit)} ({_fmt_pct(chg)}%)",
-            "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (local)",
+            "body": snippet or f"{topic['name']} 최신 지표 기준 요약입니다.",
             "source": "FinBrief"}
 
 def _clean_source(s: str) -> str:
