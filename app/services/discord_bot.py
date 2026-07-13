@@ -37,14 +37,15 @@ def _service() -> SubscriptionService:
     return SubscriptionService(_repos())
 
 
-GUILD = discord.Object(id=int(os.environ["DISCORD_GUILD_ID"]))
+_gid = os.getenv("DISCORD_GUILD_ID")
+GUILD = discord.Object(id=int(_gid)) if _gid else None   # 설정 시 테스트 서버 즉시 반영용
 
 intents = discord.Intents.default()   # 슬래시만 쓰면 기본으로 충분
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
-@tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)", guild=GUILD)
+@tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)")
 @app_commands.describe(message="원하는 걸 자연어로: 구독/조회/취소")
 async def finbrief(interaction: discord.Interaction, message: str):
     # LLM intent 파싱이 3초를 넘길 수 있어 먼저 defer(15분 확보), 블로킹 handle 은 스레드에서.
@@ -56,7 +57,10 @@ async def finbrief(interaction: discord.Interaction, message: str):
 
 @client.event
 async def on_ready():
-    await tree.sync(guild=GUILD)      # 길드 sync = 즉시 반영
+    if GUILD is not None:                    # 개발용 테스트 서버: 즉시 반영
+        tree.copy_global_to(guild=GUILD)     # 전역 커맨드를 테스트 길드에 복사
+        await tree.sync(guild=GUILD)
+    await tree.sync()                        # 전역 등록 → 봇이 들어간 모든 서버(전파 최대 ~1시간)
     print(f"✅ logged in as {client.user}")
 
 
