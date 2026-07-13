@@ -21,6 +21,10 @@ on:
         description: "카드뉴스 발송(끄면 리포트만)."
         type: boolean
         default: true
+      real_images:
+        description: "카드 이미지 실제 생성(Gemini, 카드당 ~$0.034). 끄면 텍스트."
+        type: boolean
+        default: false
       target:
         description: "발송 대상 계정."
         type: choice
@@ -51,6 +55,7 @@ jobs:
           MOCK_DATA: ${{ inputs.mock_data }}
           SEND_REPORT: ${{ inputs.send_report }}
           SEND_CARDS: ${{ inputs.send_cards }}
+          REAL_IMAGES: ${{ inputs.real_images }}
           TARGET: ${{ inputs.target }}
           ME_ID: ${{ secrets.FINBRIEF_TEST_USER_ID }}
         run: |
@@ -62,6 +67,7 @@ jobs:
           [ "$MOCK_DATA" = "true" ] && flags="$flags --mock"
           [ "$SEND_REPORT" = "true" ] || flags="$flags --no-report"
           [ "$SEND_CARDS" = "true" ] || flags="$flags --no-cards"
+          [ "$REAL_IMAGES" = "true" ] && flags="$flags --images"
           if [ "$TARGET" = "me" ]; then
             if [ -z "${ME_ID:-}" ]; then
               echo "target=me 인데 FINBRIEF_TEST_USER_ID 시크릿이 없습니다."; exit 1
