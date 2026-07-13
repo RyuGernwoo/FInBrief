@@ -32,7 +32,9 @@ def test_validate_card_json_rejects_forbidden_financial_advice():
         validate_json_payload(payload, profile="card", settings=Settings())
 
     assert exc_info.value.reason == "forbidden_terms"
-    assert "매수" in exc_info.value.details["terms"]
+    # 조언 구(phrase) 기반: "지금 매수"(headline) + "목표가"·"반드시 수익"(body) 차단
+    terms = exc_info.value.details["terms"]
+    assert "지금 매수" in terms and "목표가" in terms
 
 
 def test_validate_card_json_requires_card_keys():
