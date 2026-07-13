@@ -561,15 +561,18 @@ def _analyze(
         tags=["finbrief", "card", "analysis"],
         extra={"evidence_count": len(news)},
     )
-    raw = (
-        llm.chat_json(
-            llm.SYSTEM_ANALYZE,
-            _user_prompt(topic, data, news),
-            metadata=metadata,
-        )
-        if llm.use_llm()
-        else _local_analysis(topic, data, news)
-    )
+    if llm.use_llm():
+        try:
+            raw = llm.chat_json(
+                llm.SYSTEM_ANALYZE,
+                _user_prompt(topic, data, news),
+                metadata=metadata,
+                guardrail_profile="card",
+            )
+        except Exception:
+            raw = _local_analysis(topic, data, news)
+    else:
+        raw = _local_analysis(topic, data, news)
 
     card = CardContent(
         category=topic["category"],
@@ -605,7 +608,12 @@ def _gen_image_prompt(
                 node="image_prompt",
                 tags=["finbrief", "card", "image-prompt"],
             )
-            raw = llm.chat_json(IMAGE_PROMPT_SYSTEM, user, metadata=metadata)
+            raw = llm.chat_json(
+                IMAGE_PROMPT_SYSTEM,
+                user,
+                metadata=metadata,
+                guardrail_profile="image_prompt",
+            )
             return raw.get("prompt") or _fallback_prompt(content)
         except Exception:
             return _fallback_prompt(content)

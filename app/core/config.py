@@ -34,7 +34,33 @@ class Settings(BaseSettings):
 
     litellm_model: str = "upstage/solar-pro"
     litellm_fallback_model: str | None = None
+    litellm_proxy_url: str | None = None
+    litellm_master_key: SecretStr | None = None
+    litellm_guardrails: Annotated[list[str], NoDecode] = Field(default_factory=list)
     upstage_api_key: SecretStr | None = None
+    finbrief_llm_stub: bool = True
+    finbrief_llm_timeout_seconds: int = Field(default=30, gt=0)
+    finbrief_llm_num_retries: int = Field(default=2, ge=0)
+    finbrief_llm_guardrail_enabled: bool = True
+    finbrief_llm_require_json: bool = True
+    finbrief_llm_require_disclaimer: bool = True
+    finbrief_llm_forbidden_terms: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "매수",
+            "매도",
+            "보유",
+            "목표가",
+            "확정 수익",
+            "무조건 상승",
+            "반드시 수익",
+            "강력 추천",
+            "지금 사야",
+            "지금 팔아야",
+            "손실 없음",
+            "보장 수익",
+        ]
+    )
+    finbrief_llm_pii_masking: bool = True
 
     langfuse_enabled: bool = False
     langfuse_public_key: str | None = None
@@ -67,6 +93,15 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @field_validator("finbrief_llm_forbidden_terms", "litellm_guardrails", mode="before")
+    @classmethod
+    def split_comma_separated_list(cls, value: object) -> object:
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
     def public_dict(self) -> dict[str, object]:
         """Return non-secret settings that are safe to expose in API responses."""
 
@@ -81,6 +116,8 @@ class Settings(BaseSettings):
             "langfuse_enabled": self.langfuse_enabled,
             "langfuse_capture_io": self.langfuse_capture_io,
             "delivery_dry_run": self.delivery_dry_run,
+            "finbrief_llm_stub": self.finbrief_llm_stub,
+            "finbrief_llm_guardrail_enabled": self.finbrief_llm_guardrail_enabled,
         }
 
 

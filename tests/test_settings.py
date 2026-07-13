@@ -10,6 +10,11 @@ def test_settings_load_default_local_values():
     assert settings.api_v1_prefix == "/api/v1"
     assert settings.enable_mock_data is True
     assert settings.delivery_dry_run is True
+    assert settings.finbrief_llm_timeout_seconds == 30
+    assert settings.finbrief_llm_num_retries == 2
+    assert settings.finbrief_llm_guardrail_enabled is True
+    assert settings.finbrief_llm_pii_masking is True
+    assert "매수" in settings.finbrief_llm_forbidden_terms
 
 
 def test_settings_support_environment_overrides(monkeypatch):
@@ -35,6 +40,21 @@ def test_settings_parse_news_rss_urls_from_comma_separated_env(monkeypatch):
     assert settings.news_rss_urls == [
         "https://example.com/rss",
         "https://news.example.com/feed",
+    ]
+
+
+def test_settings_parse_llm_forbidden_terms_from_comma_separated_env(monkeypatch):
+    monkeypatch.setenv(
+        "FINBRIEF_LLM_FORBIDDEN_TERMS",
+        "매수, 목표가, 반드시 수익",
+    )
+
+    settings = Settings()
+
+    assert settings.finbrief_llm_forbidden_terms == [
+        "매수",
+        "목표가",
+        "반드시 수익",
     ]
 
 
