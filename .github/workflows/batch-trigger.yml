@@ -1,0 +1,37 @@
+name: FinBrief Batch Trigger
+
+# 수동 테스트 트리거: 인스턴스에서 아침 배치를 1회 즉시 실행한다.
+# (스케줄러 컨테이너와 별개로, 배포된 이미지+.env 로 one-off 배치 실행)
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "발송 없이 상태만(테스트). false 면 실제 디스코드 발송."
+        type: boolean
+        default: true
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare SSH
+        env:
+          GCE_SSH_KEY: ${{ secrets.GCE_SSH_KEY }}
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$GCE_SSH_KEY" > "$HOME/.ssh/finbrief"
+          chmod 600 "$HOME/.ssh/finbrief"
+          ssh-keyscan -H "$GCE_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Run one-off batch on instance
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+          GCE_USERNAME: ${{ secrets.GCE_USERNAME }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          deploy_dir="/home/${GCE_USERNAME}/finbrief"
+          flag=""
+          if [ "$DRY_RUN" = "true" ]; then flag="--dry-run"; fi
+          ssh -i "$HOME/.ssh/finbrief" "${GCE_USERNAME}@${GCE_HOST}" \
+            "cd '$deploy_dir' && docker compose run --rm --no-deps finbrief-scheduler python -m app.services.batch $flag"
