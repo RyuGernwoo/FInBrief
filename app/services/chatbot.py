@@ -18,6 +18,66 @@ INTENT_SYSTEM = (
     " topic은 반드시 주어진 카탈로그 중 하나로 매핑하고, 없으면 null."
 )
 
+RECOMMEND_SYSTEM = (
+    "너는 금융 구독 봇의 토픽 추천기다. 사용자 관심사에 맞는 토픽을 카탈로그에서 "
+    '최대 5개 골라 JSON {"topics": ["정확한 카탈로그명", ...]} 로만 답한다. 카탈로그 밖 이름 금지.'
+)
+
+_TYPE_LABEL = {"indicator": "지표", "asset": "자산", "sector": "섹터", "keyword": "키워드"}
+_TYPE_ORDER = ["indicator", "asset", "sector", "keyword"]
+
+
+def _category_summary(catalog: list, per: int = 3) -> str:
+    """카테고리(type)별 대표 per개씩 + 총 개수. 전량 나열(117개) 대신 요약."""
+    from collections import defaultdict
+
+    buckets: dict = defaultdict(list)
+    for t in catalog:
+        buckets[str(getattr(t, "type", "기타"))].append(t.name)
+    keys = [k for k in _TYPE_ORDER if k in buckets] + [k for k in buckets if k not in _TYPE_ORDER]
+    parts = [f"{_TYPE_LABEL.get(k, k)}: {', '.join(buckets[k][:per])}" for k in keys]
+    return " / ".join(parts) + f" … (총 {len(catalog)}개)"
+
+
+def recommend_topics(message: str, catalog: list, k: int = 5) -> list[str]:
+    """자연어 관심사 → 카탈로그 토픽 추천(정확명). LLM 결과는 카탈로그로 검증, 키 없으면 대표 토픽."""
+    names = [t.name for t in catalog]
+    if not llm.use_llm():
+        return names[:k]                                      # 폴백: 대표 토픽 상위 N
+    try:
+        raw = llm.chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), message)
+        return [n for n in raw.get("topics", []) if n in names][:k]   # ★ 카탈로그 검증
+    except Exception:
+        return names[:k]
+
+
+def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
+    """현재 구독을 컨텍스트로 보완/유사 토픽 추천(카탈로그 검증). 구독 없으면 대표 토픽."""
+    names = [t.name for t in catalog]
+    names_by_id = {t.topic_id: t.name for t in catalog}
+    cur_names = [names_by_id.get(s.topic_id, s.topic_id) for s in cur]
+    rest = [n for n in names if n not in cur_names]
+    if not llm.use_llm():
+        return rest[:k]
+    try:
+        ctx = ("현재 구독: " + (", ".join(cur_names) or "없음")
+               + "\n이 사용자에게 보완/유사한 토픽을 추천해줘.")
+        raw = llm.chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), ctx)
+        picks = [n for n in raw.get("topics", []) if n in names and n not in cur_names]
+        return picks[:k]
+    except Exception:
+        return rest[:k]
+
+
+def welcome_text(service: "SubscriptionService") -> str:
+    """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
+    cats = _category_summary(service.catalog())
+    return ("👋 **FinBrief** 구독 봇이에요! 관심 지표를 고르면 매일 아침 카드뉴스로 브리핑해드려요.\n"
+            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 돼요)\n"
+            "• 조회:  `내 토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n"
+            f"• 구독 가능(예시): {cats}\n"
+            "관심사만 편하게 말해도 알맞은 토픽을 추천해드려요. 예) `반도체랑 AI 소식 받고 싶어`")
+
 
 def _message_tokens(message: str) -> set[str]:
     return {token for token in re.split(r"[\s,./|:;!?()\[\]{}\"']+", message) if token}
@@ -98,6 +158,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
     names = {t.topic_id: t.name for t in catalog}
     intent, topic = parse_intent(message, catalog)
     suggestions = suggest_topics(message, catalog, limit=5)
+    cats = _category_summary(catalog)
 
     if is_investment_advice_request(message):
         return _resp("unknown", "blocked", replies.format_investment_advice_reply(), topic)
@@ -109,8 +170,15 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)
-        subscribed = [names.get(s.topic_id, s.topic_id) for s in cur]
-        return _resp(intent, "completed", replies.format_list_topics(subscribed))
+        subscribed_names = [names.get(s.topic_id, s.topic_id) for s in cur]
+        subscribed = ", ".join(subscribed_names) or "없음"
+        tier = service.tier(channel, ext_user_id)
+        reco = recommend_from_subs(cur, catalog)
+        reply = (f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']}): {subscribed}\n"
+                 f"🗂️ **구독 가능**(총 {len(catalog)}개): {cats}")
+        if reco:
+            reply += f"\n💡 이런 토픽도 관심 있으실 것 같아요: {', '.join(reco)}"
+        return _resp(intent, "completed", reply)
     if intent == "tier_status":
         t = service.tier(channel, ext_user_id)
         return _resp(intent, "completed", replies.format_tier_status(t["tier"], t["used"], t["max_topics"]))
@@ -120,7 +188,9 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         if not topic:
             if suggestions:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
-            return _resp(intent, "blocked", replies.format_add_needs_topic([]))
+            reco = recommend_topics(message, catalog)
+            hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)}" if reco else f" 가능(예시): {cats}"
+            return _resp(intent, "blocked", f"어떤 토픽을 구독할까요?{hint}")
         try:
             cur = service.add(channel, ext_user_id, topic, channel_id)
             tier = service.tier(channel, ext_user_id)
@@ -131,7 +201,10 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
                 topic,
             )
         except TopicNotAllowed:
-            return _resp(intent, "blocked", replies.format_topic_not_allowed(topic, suggestions))
+            reply = replies.format_topic_not_allowed(topic, suggestions)
+            if not suggestions:
+                reply += f"\n구독 가능 예시: {cats}"
+            return _resp(intent, "blocked", reply)
         except MaxTopicsExceeded as e:
             return _resp(intent, "blocked", replies.format_topic_limit(int(e.args[0])))
     if intent == "delete_topic":
@@ -143,4 +216,9 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
             return _resp(intent, "blocked", replies.format_delete_needs_topic())
         service.remove(channel, ext_user_id, topic)
         return _resp(intent, "completed", replies.format_delete_success(names.get(topic, topic)), topic)
-    return _resp("unknown", "blocked", replies.format_unknown_reply())
+
+    reco = recommend_topics(message, catalog)
+    reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"
+    if reco:
+        reply += f"\n💡 관심사에 맞춰 추천: {', '.join(reco)}"
+    return _resp("unknown", "blocked", reply)
