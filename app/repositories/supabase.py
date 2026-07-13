@@ -294,9 +294,12 @@ class SupabaseCardRepository:
         )
 
     def upsert(self, card: CardArtifact) -> None:
+        # id 는 DB 소유(uuid default gen_random_uuid()). 파이프라인의 card_id 는
+        # "card_<topic>_<date>" 문자열이라 UUID 컬럼에 넣으면 22P02 로 실패한다.
+        # 자연키 (topic_id, run_date) 로 upsert 하고 id 는 보내지 않는다(insert 시
+        # DB 가 생성, conflict 시 기존 id 유지). get() 이 실제 UUID 를 되돌려준다.
         self._client.table("cards").upsert(
             {
-                "id": card.card_id,
                 "topic_id": card.topic_id,
                 "run_date": card.run_date.isoformat(),
                 "title": card.title,
