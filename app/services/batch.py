@@ -54,6 +54,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="FinBrief 아침 배치 실행")
     parser.add_argument("--dry-run", action="store_true", help="발송 없이 상태만(DELIVERY_DRY_RUN=true 강제)")
     parser.add_argument("--mock", action="store_true", help="목업/fixture 데이터로 실행(ENABLE_MOCK_DATA=true)")
+    parser.add_argument("--images", action="store_true", help="카드 이미지 실제 생성(FINBRIEF_IMAGE_STUB=0, Gemini 과금)")
     parser.add_argument("--no-report", action="store_true", help="지표 리포트 발송 안 함")
     parser.add_argument("--no-cards", action="store_true", help="카드뉴스 발송 안 함(리포트만 테스트)")
     parser.add_argument("--only-user", default="", help="특정 계정만(디스코드 external_user_id). 빈값=전체")
@@ -64,6 +65,8 @@ def main() -> None:
         os.environ["ENABLE_MOCK_DATA"] = "true"
         from app.core.config import get_settings
         get_settings.cache_clear()   # 이미 캐시된 설정이 있으면 무효화
+    if args.images:
+        os.environ["FINBRIEF_IMAGE_STUB"] = "0"   # 실제 Gemini 이미지 생성
 
     result = run_batch(
         send_report=not args.no_report,
