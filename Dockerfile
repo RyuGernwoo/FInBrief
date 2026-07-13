@@ -36,6 +36,7 @@ COPY --from=builder /wheels /wheels
 COPY data/default_topics.json ./data/default_topics.json
 COPY schemas/finbrief_state.schema.json ./schemas/finbrief_state.schema.json
 COPY evals/finbrief_eval_set.schema.json ./evals/finbrief_eval_set.schema.json
+COPY frontend ./frontend
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install --no-cache-dir --no-index --find-links=/wheels finbrief \
