@@ -547,9 +547,9 @@ def _analyze(
         category=topic["category"],
         index_no="00",
         subtitle=_clip(topic["name"], 20),
-        headline=_clip_head(raw.get("headline", topic["name"]), 20),
+        headline=_clip_head(raw.get("headline", topic["name"]), 14),
         lead=_clip(raw.get("lead", ""), 45),
-        body=_clip_body(raw.get("body", ""), 240),
+        body=_clip_body(raw.get("body", ""), 160),
         source=_evidence_source(news) or raw.get("source", "FinBrief"),
         evidence=news,
     )
