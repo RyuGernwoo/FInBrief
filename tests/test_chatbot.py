@@ -13,6 +13,8 @@ def test_rule_intent_persists_channel_id(monkeypatch):
     topic = s.catalog()[0]
     r = chatbot.handle(s, "discord", "u1", f"{topic.name} 구독해줘", "12345")
     assert r["intent"] == "add_topic" and r["status"] == "completed" and r["topic"] == topic.topic_id
+    assert "아침 브리핑" in r["reply"]
+    assert "현재" in r["reply"]
     # 저장에 channel_id 반영
     subs = s.list("discord", "u1")
     assert any(x.topic_id == topic.topic_id and x.discord_channel_id == "12345" for x in subs)

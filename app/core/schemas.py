@@ -164,7 +164,16 @@ class AdminCommandRequest(StrictModel):
 
 
 class AdminCommandResponse(StrictModel):
-    intent: Literal["add_topic", "list_topics", "delete_topic", "tier_status", "unknown"]
+    intent: Literal[
+        "add_topic",
+        "list_topics",
+        "delete_topic",
+        "tier_status",
+        "help",
+        "recommend_topics",
+        "clarify_topic",
+        "unknown",
+    ]
     status: Literal["completed", "blocked", "failed"]
     reply: str
     topic: Topic | None = None

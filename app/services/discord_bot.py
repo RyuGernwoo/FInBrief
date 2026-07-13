@@ -58,8 +58,8 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
-@tree.command(name="finbrief", description="구독/토픽 관리 (예: 나스닥 구독해줘)", guild=GUILD)
-@app_commands.describe(message="원하는 걸 자연어로: 구독/조회/취소")
+@tree.command(name="finbrief", description="브리핑 메이트에게 관심 금융 토픽을 자연어로 관리합니다.", guild=GUILD)
+@app_commands.describe(message='예: "나스닥 구독", "내 토픽 보여줘", "비트코인 취소", "추천해줘"')
 async def finbrief(interaction: discord.Interaction, message: str):
     # LLM intent 파싱이 3초를 넘길 수 있어 먼저 defer(15분 확보), 블로킹 handle 은 스레드에서.
     await interaction.response.defer(ephemeral=True)  # "생각 중…" (본인만 보이게)
