@@ -49,6 +49,10 @@ def test_cd_workflow_builds_ghcr_deploys_gce_and_keeps_rollback_state():
     assert "ENABLE_MOCK_DATA" in text
     assert "docker compose up -d --force-recreate" in text
     assert "/api/v1/health" in text
+    assert "APP_ENV: ${APP_ENV:-prod}" in text
+    assert "printf 'APP_ENV=prod\\n'" in text
+    assert "APP_ENV=production" not in text
+    assert "APP_ENV:-production" not in text
     assert ".current_image" in text
     assert ".previous_image" in text
     assert "rollback" in text
@@ -61,6 +65,8 @@ def test_docker_runtime_contract_matches_finbrief_service():
 
     assert "FROM python:3.11-slim" in dockerfile
     assert "USER finbrief" in dockerfile
+    assert "APP_ENV=prod" in dockerfile
+    assert "APP_ENV=production" not in dockerfile
     assert "FINBRIEF_REPORT_OUT=/app/reports" in dockerfile
     assert "/api/v1/health" in dockerfile
     assert 'CMD ["uvicorn", "app.main:app"' in dockerfile
@@ -68,6 +74,8 @@ def test_docker_runtime_contract_matches_finbrief_service():
     assert "name: finbrief" in compose
     assert "finbrief-api:" in compose
     assert "${SERVICE_PORT:-8000}:8000" in compose
+    assert "APP_ENV: ${APP_ENV:-prod}" in compose
+    assert "APP_ENV: ${APP_ENV:-production}" not in compose
     assert "FINBRIEF_REPORT_OUT: ${FINBRIEF_REPORT_OUT:-/app/reports}" in compose
     assert "finbrief_reports:" in compose
     assert "/api/v1/health" in compose
@@ -77,6 +85,12 @@ def test_docker_runtime_contract_matches_finbrief_service():
     assert "project_docs/" in dockerignore
     assert "reports/*" in dockerignore
     assert "app/agents/out_reports/" in dockerignore
+
+
+def test_gitignore_excludes_local_deploy_private_keys():
+    text = read(".gitignore")
+
+    assert "finbrief_gce_deploy*" in text
 
 
 def test_env_example_documents_container_and_stub_variables():

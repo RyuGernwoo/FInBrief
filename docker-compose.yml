@@ -13,7 +13,7 @@ services:
         required: false
     environment:
       APP_NAME: ${APP_NAME:-FinBrief}
-      APP_ENV: ${APP_ENV:-production}
+      APP_ENV: ${APP_ENV:-prod}
       ENABLE_MOCK_DATA: ${ENABLE_MOCK_DATA:-true}
       DELIVERY_DRY_RUN: ${DELIVERY_DRY_RUN:-true}
       FINBRIEF_LLM_STUB: ${FINBRIEF_LLM_STUB:-1}
