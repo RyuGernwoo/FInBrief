@@ -232,16 +232,17 @@ def _draw_view(draw: ImageDraw.ImageDraw, view: Mapping[str, Any], col: int, row
     y = top + row * row_h
 
     _draw_icon(draw, x, y + 12, str(view["icon_key"]))
+    # 제목은 좌측 정렬, 값은 우측 정렬 → 이름이 길어도 값과 겹치지 않음.
     title = str(view["display_name"])
-    title_font = _fit_font(draw, title, 142, 34, 22)
+    title_font = _fit_font(draw, title, 128, 32, 17)
     draw.text((x + 40, y + 30), title, font=title_font, fill=INK, anchor="lm")
 
     value = _format_number(view.get("current_value"), int(view["value_decimals"]))
-    value_font = _fit_font(draw, value, 150, 32, 22)
-    draw.text((x + 176, y + 30), value, font=value_font, fill=INK, anchor="lm")
+    value_font = _fit_font(draw, value, 148, 32, 17)
+    draw.text((x + cell_w - 22, y + 30), value, font=value_font, fill=INK, anchor="rm")
 
     change_text, color = _format_change(view)
-    change_font = _fit_font(draw, change_text, 240, 28, 18)
+    change_font = _fit_font(draw, change_text, 250, 26, 16)
     draw.text((x + 40, y + 76), change_text, font=change_font, fill=color, anchor="lm")
 
 

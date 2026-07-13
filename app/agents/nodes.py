@@ -147,13 +147,20 @@ def collect_indicators(state: BriefState) -> dict[str, Any]:
 
 
 def build_report_image(state: BriefState) -> dict[str, Any]:
-    """전체 주요 지표 리포트 이미지를 한 번 생성하고 report_url에 기록한다."""
+    """전체 주요 지표 리포트 이미지를 한 번 생성하고 report_url에 기록한다.
+    모든 사용자 공통 리포트이므로 live 모드에서는 구독과 무관하게 카탈로그 전체를 실수집한다."""
     try:
         run_date = _parse_run_date(state["run_date"])
+        if state.get("live_data"):
+            from .report_ingestion import collect_report_indicators
+            indicators, missing = collect_report_indicators(run_date)
+        else:
+            indicators = state.get("indicators", [])
+            missing = state.get("missing_indicators", [])
         report_url = render_market_report_image(
-            state.get("indicators", []),
+            indicators,
             run_date=run_date,
-            missing_indicators=state.get("missing_indicators", []),
+            missing_indicators=missing,
         )
         return {"report_url": report_url}
     except Exception as exc:
@@ -426,9 +433,53 @@ def _clip(s, n: int) -> str:
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
+def _clip_head(s, n: int) -> str:
+    """제목은 한도 초과 시 단어(공백) 경계에서 끊어 숫자·단어 중간 잘림을 막는다."""
+    s = str(s).strip()
+    if len(s) <= n:
+        return s
+    cut = s[:n].rstrip()
+    sp = cut.rfind(" ")
+    return cut[:sp].rstrip() if sp >= n * 0.5 else cut
+
+
+def _clip_body(s, n: int) -> str:
+    """본문은 한도 내 마지막 문장 경계('다.', '. ' 등)에서 깔끔하게 끊는다."""
+    s = str(s).strip()
+    if len(s) <= n:
+        return s
+    cut = s[:n]
+    best = 0
+    for m in ("다.", ". ", "! ", "? ", "요."):
+        p = cut.rfind(m)
+        if p >= 0:
+            end = p + len(m)
+            if end >= n * 0.6 and end > best:
+                best = end
+    return cut[:best].rstrip() if best else cut[: n - 1].rstrip() + "…"
+
+
+def _display_unit(topic: dict, data: dict) -> str:
+    """지표 단위/통화. data.unit 우선, 없으면 카테고리로 추론(원↔달러 혼동 방지)."""
+    u = str(data.get("unit") or "").strip()
+    if u:
+        return u
+    cat = str(topic.get("category", "")).upper()
+    name = str(topic.get("name", ""))
+    if cat == "CRYPTO":
+        return "USD"
+    if cat == "FX" or "환율" in name:
+        return "원"
+    if "금리" in name or cat == "GLOBAL":
+        return "%"
+    return "pt"
+
+
 def _user_prompt(topic: dict, data: dict, news: list[dict]) -> str:
+    unit = _display_unit(topic, data)
     lines = [f"topic: {topic['name']} ({topic['category']})",
-             f"indicator: now {data.get('value')} {data.get('unit', '')}, change {data.get('change_pct')}%",
+             f"indicator: 현재값 {data.get('value')}, 변화율 {data.get('change_pct')}%",
+             f"단위/통화: {unit} (이 단위를 그대로 사용할 것)",
              "news:"]
     lines += [f"- {n['title']}: {n['snippet']}" for n in news] or ["- (none)"]
     return "\n".join(lines)
@@ -443,16 +494,38 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
             "source": "FinBrief"}
 
 
+def _clean_source(s: str) -> str:
+    """RSS 피드 제목을 언론사명으로 정리. '매일경제 : 증권'→'매일경제', '경제 | JTBC News'→'JTBC News'."""
+    s = str(s).strip()
+    if "|" in s:
+        s = s.split("|")[-1].strip()
+    if ":" in s:
+        s = s.split(":")[0].strip()
+    return s.replace(" 최신기사", "").strip()
+
+
+def _evidence_source(news: list[dict]) -> str:
+    """RAG 근거의 실제 뉴스 출처를 중복 없이 표시 (없으면 빈 문자열)."""
+    seen: set[str] = set()
+    names: list[str] = []
+    for n in news:
+        name = _clean_source(n.get("source") or "")
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return "출처: " + ", ".join(names[:3]) if names else ""
+
+
 def _analyze(topic: dict, data: dict, news: list[dict]) -> dict:
     raw = llm.chat_json(llm.SYSTEM_ANALYZE, _user_prompt(topic, data, news)) if llm.use_llm() \
         else _local_analysis(topic, data, news)
     card = CardContent(
         category=topic["category"], index_no="00",
         subtitle=_clip(topic["name"], 20),
-        headline=_clip(raw.get("headline", topic["name"]), 14),
+        headline=_clip_head(raw.get("headline", topic["name"]), 20),
         lead=_clip(raw.get("lead", ""), 45),
-        body=_clip(raw.get("body", ""), 160),
-        source=raw.get("source", "FinBrief"),
+        body=_clip_body(raw.get("body", ""), 240),
+        source=_evidence_source(news) or raw.get("source", "FinBrief"),
         evidence=news,
     )
     return card.model_dump()

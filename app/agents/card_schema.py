@@ -12,9 +12,9 @@ class CardContent(BaseModel):
     category: str                          # GLOBAL|MARKET|DOMESTIC|CRYPTO|FX
     index_no: str = "00"
     subtitle: str = Field(max_length=20)
-    headline: str = Field(max_length=14)
+    headline: str = Field(max_length=20)
     lead: str = Field(max_length=45)
-    body: str = Field(max_length=160)
+    body: str = Field(max_length=240)
     source: str
     disclaimer: str = "본 브리핑은 투자 조언이 아닌 참고용 정보입니다."
     image_url: str | None = None
