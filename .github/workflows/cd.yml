@@ -241,7 +241,7 @@ jobs:
                 - .env
               environment:
                 APP_NAME: ${APP_NAME:-FinBrief}
-                APP_ENV: ${APP_ENV:-production}
+                APP_ENV: ${APP_ENV:-prod}
                 FINBRIEF_REPORT_OUT: ${FINBRIEF_REPORT_OUT:-/app/reports}
               ports:
                 - "${SERVICE_PORT:-8000}:8000"
@@ -274,7 +274,7 @@ jobs:
             {
               printf 'APP_NAME=FinBrief\n'
               printf 'APP_VERSION=0.1.0\n'
-              printf 'APP_ENV=production\n'
+              printf 'APP_ENV=prod\n'
               printf 'API_V1_PREFIX=/api/v1\n'
               printf 'LOG_LEVEL=INFO\n'
               printf 'DEFAULT_TIMEZONE=Asia/Seoul\n'
