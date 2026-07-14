@@ -99,6 +99,14 @@ def format_unknown_reply() -> str:
     )
 
 
+def format_report_not_generated_reply() -> str:
+    return (
+        "📊 아직 설명할 지표 리포트가 생성되지 않았어요!\n"
+        "먼저 오늘 리포트를 생성한 뒤 다시 물어봐 주세요. "
+        '예: "오늘 리포트 설명해줘", "변동 큰 지표 알려줘"'
+    )
+
+
 def format_recommend_topics(suggestions: list[TopicSuggestion]) -> str:
     lines = [f"{idx}. {item.name}" for idx, item in enumerate(suggestions, start=1)]
     return (

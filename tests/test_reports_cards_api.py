@@ -114,3 +114,25 @@ def test_reports_today_returns_latest_mock_report(monkeypatch, tmp_path):
     assert payload["generated_cards"] == 1
     assert "투자 조언이 아닌" in payload["disclaimer"]
     assert payload["report_url"]
+
+
+def test_reports_today_explanation_returns_focus_items(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    client.post(
+        "/api/v1/subscriptions/report_user_explain/topics",
+        json={"topic_id": "topic_btc", "channel": "discord"},
+    )
+    client.post("/api/v1/reports/run", json={"run_date": "2026-07-10", "dry_run": True})
+
+    response = client.get(
+        "/api/v1/reports/today/explanation",
+        params={"run_date": "2026-07-10", "max_focus": 3},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_date"] == "2026-07-10"
+    assert payload["focus_items"]
+    assert len(payload["focus_items"]) <= 3
+    assert "reply" in payload
+    assert "투자 조언이 아닌" in payload["disclaimer"]

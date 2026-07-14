@@ -114,3 +114,17 @@ def test_delete_not_subscribed_blocked(monkeypatch):
     r = chatbot.handle(s, "discord", "del_u2", "비트코인 제거", "c")
     assert r["intent"] == "delete_topic" and r["status"] == "blocked"
     assert "구독 목록에 없" in r["reply"]
+
+
+def test_explain_report_without_generated_report_guides_user(monkeypatch):
+    """리포트 설명 요청인데 오늘 리포트가 없으면 생성 안내."""
+    from app.agents.pipeline import reset_latest_results
+
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    reset_latest_results()
+    r = chatbot.handle(_svc(), "discord", "explain_u1", "오늘 리포트에서 뭐 봐야 해?")
+
+    assert r["intent"] == "explain_report"
+    assert r["status"] == "blocked"
+    assert "리포트" in r["reply"]
+    assert "생성" in r["reply"]

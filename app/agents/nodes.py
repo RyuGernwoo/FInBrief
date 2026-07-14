@@ -189,7 +189,11 @@ def build_report_image(state: BriefState) -> dict[str, Any]:
             run_date=run_date,
             missing_indicators=missing,
         )
-        return {"report_url": report_url}
+        return {
+            "report_url": report_url,
+            "report_indicators": indicators,
+            "report_missing_indicators": missing,
+        }
     except Exception as exc:
         return {
             "errors": [

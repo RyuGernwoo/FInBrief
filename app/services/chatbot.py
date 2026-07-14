@@ -6,14 +6,16 @@ import json
 import re
 
 from app.core import llm
+from app.agents.pipeline import get_latest_result
 from app.services import chatbot_responses as replies
 from app.services.chatbot_persona import is_investment_advice_request
 from app.services.chatbot_suggestions import suggest_topics, starter_topics
+from app.services.report_explainer import build_report_explanation
 from app.services.subscription_service import SubscriptionService, TopicNotAllowed, MaxTopicsExceeded
 
 INTENT_SYSTEM = (
     "너는 금융 카드뉴스 구독 관리 봇의 의도 분류기다. 사용자 메시지를 아래 JSON으로만 답한다. "
-    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|unknown", '
+    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|explain_report|unknown", '
     '"topic": "<카탈로그 토픽명 또는 null>"}'
     " topic은 반드시 주어진 카탈로그 중 하나로 매핑하고, 없으면 null."
 )
@@ -170,6 +172,12 @@ def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
         return "help", None
     if any(k in message for k in ("추천", "뭐 받아", "인기", "처음")):
         return "recommend_topics", None
+    if (
+        any(k in message for k in ("리포트", "시장 설명", "지표 설명", "변동 큰", "집중해서"))
+        or "report" in m
+        or all(k in message for k in ("오늘", "뭐", "봐야"))
+    ):
+        return "explain_report", None
     if any(k in message for k in ("추가", "구독", "등록")) or "add" in m:
         return "add_topic", topic
     if any(k in message for k in ("삭제", "제거", "취소", "해지", "빼", "지워")) or any(k in m for k in ("remove", "delete")):
@@ -216,6 +224,15 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         return _resp(intent, "completed", replies.format_help_reply())
     if intent == "recommend_topics":
         return _resp(intent, "completed", replies.format_recommend_topics(starter_topics(catalog, limit=5)))
+    if intent == "explain_report":
+        result = get_latest_result()
+        if result is None:
+            return _resp(intent, "blocked", replies.format_report_not_generated_reply())
+        try:
+            payload = build_report_explanation(result, repos=service.repos, max_focus=3)
+            return _resp(intent, "completed", str(payload["reply"]))
+        except Exception:
+            return _resp(intent, "blocked", replies.format_report_not_generated_reply())
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)

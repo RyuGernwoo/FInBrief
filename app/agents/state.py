@@ -19,6 +19,8 @@ class BriefState(TypedDict, total=False):
     # 공유 단계 산출물
     indicators: list[dict[str, Any]]
     missing_indicators: list[str]
+    report_indicators: list[dict[str, Any]]
+    report_missing_indicators: list[str]
     top_news: list[dict[str, Any]]
     repositories: Any
     # 실데이터 모드 스위치와 실적재 의존성 (Supabase RAG 실조회 경로에서만 사용)

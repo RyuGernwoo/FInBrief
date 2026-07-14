@@ -126,9 +126,11 @@ def run_morning_pipeline(
                 "error_count": len(final.get("errors", [])),
             }
         )
+    report_indicators = final.get("report_indicators") or final.get("indicators", [])
+    report_missing = final.get("report_missing_indicators") or final.get("missing_indicators", [])
     indicators = [
         _indicator_from_state(item, run_date)
-        for item in final.get("indicators", [])
+        for item in report_indicators
     ]
     cards = [_card_from_state(repos, item, run_date) for item in final.get("cards", [])]
     deliveries = [_delivery_from_state(item) for item in final.get("deliveries", [])]
@@ -137,6 +139,7 @@ def run_morning_pipeline(
         run_date=run_date,
         indicators=indicators,
         top_news=[],
+        missing_indicators=[str(item) for item in report_missing],
         report_url=final.get("report_url"),
         disclaimer=DISCLAIMER,
     )

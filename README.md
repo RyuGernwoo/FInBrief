@@ -188,6 +188,7 @@ curl http://127.0.0.1:8000/api/v1/subscriptions/u_001
 curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
   -H "Content-Type: application/json" `
   -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true}"
+curl "http://127.0.0.1:8000/api/v1/reports/today/explanation?run_date=2026-07-10"
 curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10"
 ```
 
@@ -203,6 +204,7 @@ Discord 챗봇은 `/finbrief` slash command로 사용자의 자연어 메시지�
 /finbrief message: 비트코인 취소해줘
 /finbrief message: 금리 구독
 /finbrief message: 처음인데 뭐 받아보면 좋아?
+/finbrief message: 오늘 리포트에서 뭐 봐야 해?
 ```
 
 주요 동작:
@@ -210,6 +212,7 @@ Discord 챗봇은 `/finbrief` slash command로 사용자의 자연어 메시지�
 - `구독`, `추가`, `등록` 표현은 토픽 추가로 처리합니다.
 - `삭제`, `취소`, `해지` 표현은 토픽 삭제로 처리합니다.
 - `내 토픽`, `목록`, `조회` 표현은 현재 구독 목록을 보여줍니다.
+- `오늘 리포트`, `변동 큰 지표`, `뭐 봐야 해?` 표현은 생성된 당일 지표 리포트에서 큰 변동과 RSS/RAG 근거를 설명합니다.
 - `금리`, `환율`처럼 후보가 여러 개인 키워드는 바로 저장하지 않고 후보 토픽을 제시합니다.
 - `사야 해?`, `매수`, `매도`, `목표가`처럼 투자 판단을 요구하는 표현은 차단하고 브리핑 구독 예시로 전환합니다.
 

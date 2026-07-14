@@ -2,6 +2,7 @@ from datetime import date
 
 from PIL import Image
 
+from app.agents import nodes, report_ingestion
 from app.agents.report_catalog import MARKET_REPORT_SLOTS
 from app.agents.report_render import build_indicator_views, render_market_report_image
 
@@ -124,3 +125,31 @@ def test_render_market_report_image_creates_1080_png(tmp_path):
         assert image.format == "PNG"
         assert image.size == (1080, 1080)
         assert image.mode == "RGB"
+
+
+def test_build_report_image_keeps_live_report_indicators_for_explanation(monkeypatch, tmp_path):
+    monkeypatch.setenv("FINBRIEF_REPORT_OUT", str(tmp_path))
+    monkeypatch.setattr(
+        report_ingestion,
+        "collect_report_indicators",
+        lambda run_date: (
+            [
+                {
+                    "indicator_id": "btc",
+                    "name": "비트코인",
+                    "value": 65000.0,
+                    "prev": 63000.0,
+                    "change_pct": 3.17,
+                    "unit": "USD",
+                    "source": "fixture",
+                }
+            ],
+            ["shanghai"],
+        ),
+    )
+
+    out = nodes.build_report_image({"live_data": True, "run_date": "2026-07-14"})
+
+    assert out["report_indicators"][0]["indicator_id"] == "btc"
+    assert out["report_missing_indicators"] == ["shanghai"]
+    assert out["report_url"]
