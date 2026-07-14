@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 BOT_NAME = "FinBrief Mate"
-BOT_NAME_KO = "브리핑 메이트"
+BOT_NAME_KO = "FinBrief"
 
 HELP_EXAMPLES = [
     "나스닥 구독해줘",
@@ -22,9 +22,8 @@ STARTER_TOPIC_IDS = [
 INVESTMENT_ADVICE_TERMS = [
     "사야",
     "팔아",
-    "매수",
-    "매도",
-    "목표가",
+    "종목 추천",
+    "추천 종목",
     "수익 보장",
     "확정 수익",
 ]
