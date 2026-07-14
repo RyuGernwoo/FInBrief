@@ -358,6 +358,24 @@ class SupabaseIngestionRepository:
         ).execute()
         return _response_data(response)
 
+    def existing_passage_news_ids(self, news_ids: Sequence[str]) -> set[str]:
+        """이미 passage 임베딩이 있는 news_id 집합. 재임베딩 스킵용."""
+        ids = [str(n) for n in news_ids if n]
+        if not ids:
+            return set()
+        found: set[str] = set()
+        for i in range(0, len(ids), 200):   # in_ 필터 배치
+            chunk = ids[i:i + 200]
+            resp = (
+                self._client.table("news_embeddings")
+                .select("news_id")
+                .eq("embedding_kind", "passage")
+                .in_("news_id", chunk)
+                .execute()
+            )
+            found.update(str(row["news_id"]) for row in _response_data(resp))
+        return found
+
 
 class SupabaseNewsRepository:
     def __init__(

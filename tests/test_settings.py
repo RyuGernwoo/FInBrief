@@ -11,7 +11,7 @@ def test_settings_load_default_local_values():
     assert settings.enable_mock_data is True
     assert settings.delivery_dry_run is True
     assert settings.finbrief_llm_timeout_seconds == 30
-    assert settings.finbrief_llm_num_retries == 2
+    assert settings.finbrief_llm_num_retries == 4
     assert settings.finbrief_llm_guardrail_enabled is True
     assert settings.finbrief_llm_pii_masking is True
     assert "반드시 수익" in settings.finbrief_llm_forbidden_terms
