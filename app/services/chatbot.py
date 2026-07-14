@@ -91,14 +91,14 @@ def _catalog_table(catalog: list) -> str:
     for key in keys:
         names = ", ".join(_table_cell(name) for name in buckets[key])
         rows.append(f"| {_table_cell(_type_label(key))} | {names} |")
-    return "\n".join(rows)
+    return "\n\n".join(rows)
 
 
 def _format_list_topics_reply(current: list, catalog: list, tier: dict) -> str:
     return (
-        f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']})\n"
-        f"{_subscription_table(current, catalog)}\n\n"
-        f"🗂️ **전체 구독 가능 토픽** (총 {len(catalog)}개)\n"
+        f"\n📋 **현재 구독** ({tier['used']}/{tier['max_topics']})\n"
+        f"{_subscription_table(current, catalog)}\n"
+        f"\n🗂️ **전체 구독 가능 토픽** (총 {len(catalog)}개)\n"
         f"{_catalog_table(catalog)}"
     )
 
