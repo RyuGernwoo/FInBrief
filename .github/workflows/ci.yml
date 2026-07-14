@@ -17,6 +17,7 @@ on:
       - "docker-compose.yml"
       - ".github/workflows/**"
       - "README.md"
+      - "frontend/**"
   pull_request:
     branches:
       - main
@@ -33,6 +34,7 @@ on:
       - "docker-compose.yml"
       - ".github/workflows/**"
       - "README.md"
+      - "frontend/**"
   workflow_dispatch:
 
 concurrency:
