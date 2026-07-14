@@ -34,6 +34,9 @@ DISCLAIMER = "본 브리핑은 투자 조언이 아닌 참고용 정보입니다
 IMAGE_PROMPT_SYSTEM = (
     "You are an image-prompt writer for a financial card news. "
     "Given the card info, output ONE english image prompt as JSON {\"prompt\": \"...\"}. "
+    "The MAIN SUBJECT of the illustration MUST be the given topic itself "
+    "(the company/asset/theme in 'topic'); use headline/body only for mood. "
+    "Do NOT depict unrelated entities that merely appear in the body. "
     "Style: clean isometric illustration, muted palette. "
     "The illustration MUST contain no text, no letters, no numbers."
 )
@@ -693,7 +696,12 @@ def _gen_image_prompt(
     run_id: str | None = None,
     trace_id: str | None = None,
     topic_id: str | None = None,
+    topic_relevant: bool = True,
 ) -> str:
+    # 근거가 토픽과 무관하면(관련성 가드 발동) body 가 엉뚱한 소재를 담고 있으므로
+    # 이미지도 body 를 배제하고 토픽만으로 앵커(_fallback_prompt = '토픽' 일러스트).
+    if not topic_relevant:
+        return _fallback_prompt(content)
     if llm.use_llm():
         try:
             user = f"topic: {content.get('subtitle')}\nheadline: {content.get('headline')}\nbody: {content.get('body')}"
@@ -775,11 +783,14 @@ def build_card(state: BriefState) -> dict:
         data = _fetch_data(topic)
         news = _retrieve_news(topic)
         content = _analyze(topic, data, news, run_id=run_id, trace_id=trace_id)
+        # 텍스트 가드와 동일 신호: 근거가 토픽과 무관하면 이미지도 body 배제 후 토픽 앵커.
+        topic_relevant = not news or _topic_in_evidence(topic, news)
         img_prompt = _gen_image_prompt(
             content,
             run_id=run_id,
             trace_id=trace_id,
             topic_id=str(topic.get("topic_id")),
+            topic_relevant=topic_relevant,
         )
         content["image_url"] = _generate_image(img_prompt, topic["topic_id"], run_date)
         out_path = _compose_card(content, topic["topic_id"], run_date)

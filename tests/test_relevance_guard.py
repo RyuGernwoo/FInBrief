@@ -52,3 +52,27 @@ def test_analyze_keeps_headline_when_topic_relevant(monkeypatch):
     news = [{"title": "엔비디아 실적 발표", "snippet": "매출 사상 최대", "source": "동아일보"}]
     out = nodes._analyze(NVDA_TOPIC, NVDA_DATA, news)
     assert out["headline"] == "엔비디아 실적 호조"   # 관련 근거면 LLM 헤드라인 유지
+
+
+def test_image_prompt_drops_body_when_topic_irrelevant(monkeypatch):
+    # 무관 근거일 때 이미지 프롬프트는 LLM(body 기반) 대신 토픽 앵커 폴백을 써야 함
+    called = {"llm": False}
+    def _boom(*a, **k):
+        called["llm"] = True
+        return {"prompt": "datacenter cooling pipes and apple logo"}  # 엉뚱한 body 소재
+    monkeypatch.setattr(nodes.llm, "use_llm", lambda: True)
+    monkeypatch.setattr(nodes.llm, "chat_json", _boom)
+    content = {"subtitle": "엔비디아", "headline": "엔비디아 203.53달러",
+               "body": "나인앤컴퍼니 데이터센터 냉각과 애플 최고가"}
+    p = nodes._gen_image_prompt(content, topic_relevant=False)
+    assert called["llm"] is False           # LLM 미호출(body 소재 차단)
+    assert "엔비디아" in p and "cooling" not in p and "apple" not in p
+
+
+def test_image_prompt_uses_llm_when_topic_relevant(monkeypatch):
+    monkeypatch.setattr(nodes.llm, "use_llm", lambda: True)
+    monkeypatch.setattr(nodes.llm, "chat_json",
+                        lambda *a, **k: {"prompt": "isometric gpu chip scene"})
+    content = {"subtitle": "엔비디아", "headline": "엔비디아 실적 호조", "body": "GPU 매출 최대"}
+    p = nodes._gen_image_prompt(content, topic_relevant=True)
+    assert p == "isometric gpu chip scene"
