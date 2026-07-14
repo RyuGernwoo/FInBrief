@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
 
-from app.core.schemas import CardArtifact, NewsEvidence, Subscription, Topic, UserProfile
+from app.core.schemas import (
+    CardArtifact,
+    EvaluationResult,
+    NewsEvidence,
+    Subscription,
+    Topic,
+    UserProfile,
+)
 
 
 class RepositoryError(RuntimeError):
@@ -60,6 +67,12 @@ class NewsRepository(Protocol):
     def match(self, topic: Topic, since: datetime, k: int) -> list[NewsEvidence]: ...
 
 
+class EvaluationRepository(Protocol):
+    def insert_many(self, results: list[EvaluationResult]) -> None: ...
+
+    def list_by_run(self, run_id: str) -> list[EvaluationResult]: ...
+
+
 @dataclass(slots=True)
 class RepositoryBundle:
     users: UserRepository
@@ -67,3 +80,4 @@ class RepositoryBundle:
     subscriptions: SubscriptionRepository
     cards: CardRepository
     news: NewsRepository
+    evals: EvaluationRepository

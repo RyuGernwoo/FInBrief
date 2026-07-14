@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.core.schemas import (
     CardArtifact,
+    EvaluationResult,
     NewsDocument,
     NewsEvidence,
     Subscription,
@@ -171,6 +172,17 @@ class MemoryNewsRepository:
         ]
 
 
+class MemoryEvaluationRepository:
+    def __init__(self) -> None:
+        self._results: list[EvaluationResult] = []
+
+    def insert_many(self, results: list[EvaluationResult]) -> None:
+        self._results.extend(results)
+
+    def list_by_run(self, run_id: str) -> list[EvaluationResult]:
+        return [item for item in self._results if item.run_id == run_id]
+
+
 def load_default_topics(path: Path = DEFAULT_TOPICS_PATH) -> list[Topic]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     return [Topic.model_validate(item) for item in payload]
@@ -189,4 +201,5 @@ def create_memory_repositories(
         subscriptions=MemorySubscriptionRepository(users, topics),
         cards=MemoryCardRepository(),
         news=MemoryNewsRepository(news_documents),
+        evals=MemoryEvaluationRepository(),
     )

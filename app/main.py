@@ -20,6 +20,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=runtime_settings.app_version,
         description="FinBrief personalized AI financial briefing API",
     )
+
+    def _settings_override() -> Settings:
+        if settings is None:
+            return runtime_settings
+        current = Settings()
+        return current.model_copy(
+            update={
+                "app_name": runtime_settings.app_name,
+                "app_version": runtime_settings.app_version,
+                "app_env": runtime_settings.app_env,
+                "api_v1_prefix": runtime_settings.api_v1_prefix,
+                "enable_mock_data": runtime_settings.enable_mock_data,
+            }
+        )
+
+    app.dependency_overrides[get_settings] = _settings_override
     app.include_router(api_router, prefix=runtime_settings.api_v1_prefix)
 
     service_info = {

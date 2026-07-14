@@ -111,12 +111,19 @@ create table if not exists deliveries (
 create table if not exists eval_runs (
     id uuid primary key default gen_random_uuid(),
     run_id text not null,
+    trace_id text,
+    run_date date,
+    topic_id text,
     eval_name text not null,
     score double precision,
     passed boolean not null,
     result jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now()
 );
+
+alter table eval_runs add column if not exists trace_id text;
+alter table eval_runs add column if not exists run_date date;
+alter table eval_runs add column if not exists topic_id text;
 
 create index if not exists idx_subscriptions_user_active
     on subscriptions(user_id, active);
@@ -135,6 +142,12 @@ create index if not exists idx_cards_topic_date
 
 create index if not exists idx_deliveries_run_status
     on deliveries(run_id, status);
+
+create index if not exists idx_eval_runs_run_name
+    on eval_runs(run_id, eval_name);
+
+create index if not exists idx_eval_runs_trace
+    on eval_runs(trace_id);
 
 create or replace function match_news(
     query_embedding vector(4096),

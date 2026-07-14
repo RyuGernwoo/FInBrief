@@ -13,6 +13,7 @@ from typing import Any
 
 from app.core.schemas import (
     CardArtifact,
+    EvaluationResult,
     IndicatorValue,
     NewsDocument,
     NewsEvidence,
@@ -20,6 +21,7 @@ from app.core.schemas import (
     Topic,
     UserProfile,
 )
+from app.core.evaluations import eval_run_rows
 from app.repositories.protocols import (
     RepositoryBundle,
     RepositoryNotFoundError,
@@ -402,6 +404,41 @@ class SupabaseNewsRepository:
         return [map_news_match_result(row) for row in _response_data(response)]
 
 
+def _evaluation_from_row(row: dict[str, Any]) -> EvaluationResult:
+    return EvaluationResult.model_validate(
+        {
+            "eval_name": row["eval_name"],
+            "score": row.get("score"),
+            "passed": row["passed"],
+            "result": row.get("result") or {},
+            "run_id": row.get("run_id"),
+            "run_date": row.get("run_date"),
+            "trace_id": row.get("trace_id"),
+            "topic_id": row.get("topic_id"),
+        }
+    )
+
+
+class SupabaseEvaluationRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def insert_many(self, results: list[EvaluationResult]) -> None:
+        payload = eval_run_rows(results)
+        if not payload:
+            return
+        self._client.table("eval_runs").insert(payload).execute()
+
+    def list_by_run(self, run_id: str) -> list[EvaluationResult]:
+        response = (
+            self._client.table("eval_runs")
+            .select("*")
+            .eq("run_id", run_id)
+            .execute()
+        )
+        return [_evaluation_from_row(row) for row in _response_data(response)]
+
+
 @dataclass(slots=True)
 class SupabaseRepositories(RepositoryBundle):
     pass
@@ -419,4 +456,5 @@ def create_supabase_repositories(
         subscriptions=SupabaseSubscriptionRepository(runtime_client),
         cards=SupabaseCardRepository(runtime_client),
         news=SupabaseNewsRepository(runtime_client, query_embedding_provider),
+        evals=SupabaseEvaluationRepository(runtime_client),
     )

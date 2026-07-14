@@ -6,8 +6,9 @@ from datetime import date
 from typing import Any
 
 from app.agents.graph import graph
-from app.core import observability
-from app.core.config import get_settings
+from app.core import langfuse_scores, observability
+from app.core.config import Settings, get_settings
+from app.core.evaluations import eval_summary, evaluate_batch_result
 from app.core.schemas import (
     BatchRunResult,
     CardArtifact,
@@ -81,6 +82,14 @@ def _delivery_from_state(item: dict[str, Any]) -> DeliveryLog:
     )
 
 
+def _store_eval_results(repos: RepositoryBundle, results: list[Any]) -> int:
+    try:
+        repos.evals.insert_many(results)
+        return len(results)
+    except Exception:
+        return 0
+
+
 def run_morning_pipeline(
     repos: RepositoryBundle,
     *,
@@ -90,13 +99,14 @@ def run_morning_pipeline(
     send_report: bool = True,
     send_cards: bool = True,
     only_user: str | None = None,
+    settings: Settings | None = None,
 ) -> BatchRunResult:
     runtime_run_id = run_id or f"run_{run_date:%Y%m%d}_mock"
-    settings = get_settings()
+    runtime_settings = settings or get_settings()
     with observability.report_trace(
         run_id=runtime_run_id,
         run_date=run_date.isoformat(),
-        settings=settings,
+        settings=runtime_settings,
         metadata={"dry_run": dry_run},
     ) as (trace_id, trace):
         final = graph.invoke(
@@ -111,48 +121,55 @@ def run_morning_pipeline(
                 "errors": [],
                 "dry_run": dry_run,
                 # Supabase/Upstage 실데이터 모드는 mock 비활성화 시에만 켠다.
-                "live_data": not settings.enable_mock_data,
+                "live_data": not runtime_settings.enable_mock_data,
                 # 발송 범위(배치 트리거 옵션)
                 "deliver_report": send_report,
                 "deliver_cards": send_cards,
                 "only_external_user": only_user,
             }
         )
+        report_indicators = final.get("report_indicators") or final.get("indicators", [])
+        report_missing = final.get("report_missing_indicators") or final.get("missing_indicators", [])
+        indicators = [
+            _indicator_from_state(item, run_date)
+            for item in report_indicators
+        ]
+        cards = [_card_from_state(repos, item, run_date) for item in final.get("cards", [])]
+        deliveries = [_delivery_from_state(item) for item in final.get("deliveries", [])]
+        report = FullReport(
+            report_id=f"report_{run_date:%Y%m%d}",
+            run_date=run_date,
+            indicators=indicators,
+            top_news=[],
+            missing_indicators=[str(item) for item in report_missing],
+            report_url=final.get("report_url"),
+            disclaimer=DISCLAIMER,
+        )
+        result = BatchRunResult(
+            run_id=runtime_run_id,
+            run_date=run_date,
+            status=final["status"],
+            report=report,
+            generated_cards=cards,
+            delivery_results=deliveries,
+            trace_id=final.get("trace_id"),
+            errors=[str(item.get("message", item)) for item in final.get("errors", [])],
+        )
+        eval_results = evaluate_batch_result(result, settings=runtime_settings)
+        result = result.model_copy(update={"eval_results": eval_results})
+        stored_evals = _store_eval_results(repos, eval_results)
+        exported_scores = langfuse_scores.score_eval_results(eval_results, settings=runtime_settings)
         trace.update(
             output={
                 "status": final.get("status"),
                 "generated_count": final.get("generated_count"),
                 "reused_count": final.get("reused_count"),
                 "error_count": len(final.get("errors", [])),
+                "eval_summary": eval_summary(eval_results),
+                "stored_eval_results": stored_evals,
+                "exported_langfuse_scores": exported_scores,
             }
         )
-    report_indicators = final.get("report_indicators") or final.get("indicators", [])
-    report_missing = final.get("report_missing_indicators") or final.get("missing_indicators", [])
-    indicators = [
-        _indicator_from_state(item, run_date)
-        for item in report_indicators
-    ]
-    cards = [_card_from_state(repos, item, run_date) for item in final.get("cards", [])]
-    deliveries = [_delivery_from_state(item) for item in final.get("deliveries", [])]
-    report = FullReport(
-        report_id=f"report_{run_date:%Y%m%d}",
-        run_date=run_date,
-        indicators=indicators,
-        top_news=[],
-        missing_indicators=[str(item) for item in report_missing],
-        report_url=final.get("report_url"),
-        disclaimer=DISCLAIMER,
-    )
-    result = BatchRunResult(
-        run_id=runtime_run_id,
-        run_date=run_date,
-        status=final["status"],
-        report=report,
-        generated_cards=cards,
-        delivery_results=deliveries,
-        trace_id=final.get("trace_id"),
-        errors=[str(item.get("message", item)) for item in final.get("errors", [])],
-    )
     _LATEST_RESULTS[run_date] = result
     return result
 
