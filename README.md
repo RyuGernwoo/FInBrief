@@ -1,202 +1,42 @@
-# FinBrief
+# FinBrief 📊
 
-FinBrief는 Team8이 7일 안에 구현하는 개인 맞춤 AI 금융 브리핑 에이전트입니다. 매일 아침 주요 거시 금융 지표와 경제 뉴스를 수집하고, 전체 시장 리포트와 사용자 관심 토픽별 카드뉴스를 생성한 뒤 Discord 또는 Slack으로 전달하는 것을 MVP 목표로 합니다.
+사용자가 관심 있는 금융 토픽을 구독하면 실제 시장 지표와 경제 뉴스를 수집해 매일 아침 7시에 디스코드를 통한 이미지 전송 형태의 브리핑으로 정리해주는 AI 서비스입니다.
 
-현재 저장소에는 FastAPI 기본 실행 환경, 설정 로더, health endpoint, 스키마 계약, 기본 토픽 fixture, in-memory repository, Supabase schema/RPC 초안, 외부 데이터 수집/RAG 기반 도구, 구독 API, Discord 관리 챗봇, repository 기반 LangGraph mock 리포트/카드 생성 파이프라인이 준비되어 있습니다.
+사용자는 Discord 챗봇에서 관심 토픽을 관리할 수 있고, 매일 아침 전체 시장 리포트와 토픽별 카드 요약 뉴스를 받아 볼 수 있습니다. 
 
-## 현재 구현 상태
+FinBrief는 투자 판단을 대신하지 않으며, 모든 결과는 참고용 정보로만 제공됩니다.
 
-| 구분 | 상태 |
+---
+
+## 1. 일반 사용자용 안내 👥
+
+FinBrief가 이미 배포되어 있고, 사용자는 서비스를 이용하기만 한다는 가정으로 설명합니다. 
+별도의 설치, API key, 서버 설정은 필요하지 않습니다.
+
+### FinBrief로 할 수 있는 일 ⚙️
+
+| 기능 | 설명 |
 | --- | --- |
-| FastAPI 앱 부팅 | 완료 |
-| 환경변수 기반 설정 로더 | 완료 |
-| `GET /api/v1/health` | 완료 |
-| Pydantic 스키마 계약 | 완료 |
-| Supabase SQL 스키마 | 완료 |
-| 기본 토픽 fixture | 완료 |
-| in-memory repository | 완료 |
-| Supabase `match_news` RPC 스키마 | 완료 |
-| FRED/yfinance/ECOS mapper | 완료 |
-| RSS 뉴스 정규화/필터링/태깅 | 완료 |
-| Upstage embedding 입력/검증 도구 | 완료 |
-| Supabase ingestion payload adapter | 완료 |
-| 기본 테스트 | 완료 |
-| 구독 API | 완료 |
-| Discord 관리 챗봇 persona/대화형 UX | 완료 |
-| 선택 토픽 ingestion API | 완료 |
-| 주요 지표 전체 리포트 이미지 생성 | 완료(mock) |
-| LangGraph 리포트/카드 생성 파이프라인 | 완료(mock) |
-| topic+date 카드 캐시 | 완료(mock) |
-| report/card 조회 API | 완료(mock) |
-| Docker/Compose 실행 단위 | 완료(multi-stage build) |
-| GitHub Actions CI/CD workflow | 완료 |
-| LiteLLM/Langfuse 관측성 연동 | 부분 완료 |
-| Discord/Slack 실제 발송 | 예정 |
+| 관심 토픽 구독 | 비트코인, 나스닥, 환율, 금리, 반도체, AI 등 보고 싶은 금융 토픽을 등록합니다. |
+| 구독 목록 확인 | 현재 내가 구독 중인 토픽과 구독 가능한 토픽을 확인합니다. |
+| 토픽 삭제 | 더 이상 보고 싶지 않은 토픽을 구독 목록에서 제거합니다. |
+| 주요 지표 리포트 확인 | 주식 지수, 금리, 원자재, 환율 등 핵심 지표를 이미지 리포트로 봅니다. |
+| 토픽별 카드뉴스 확인 | 내가 구독한 토픽에 대해 수치, 요약, 관련 뉴스 근거가 포함된 카드뉴스를 받습니다. |
+| 오늘 리포트 설명 요청 | 당일 리포트에서 변동이 큰 지표와 함께 봐야 할 뉴스 흐름을 설명받습니다. |
 
-## MVP 범위
+### 웹 화면 이용 💻
 
-포함 기능:
+[웹 주소](http://34.50.41.2:8000/)에 접속하면 다음 정보를 확인할 수 있습니다.
 
-- 사용자 관심 토픽 구독 관리
-- Discord slash command 기반 자연어 구독 관리
-- free tier 토픽 5개 제한
-- 거시 지표와 경제 뉴스 수집
-- 뉴스 임베딩과 Supabase pgvector 기반 RAG 검색
-- 전체 지표 리포트 생성
-- 토픽별 카드뉴스 생성과 topic+date 캐시
-- Discord/Slack webhook 발송
-- LiteLLM retry/fallback
-- Langfuse trace와 자동 평가 결과 기록
-- 투자 조언 금지 및 disclaimer 검증
+- FinBrief 세부 설명
+- FinBrief에 사용된 기술
+- FinBrief를 Discord에 등록하기
 
-제외 기능:
+### Discord 챗봇 이용 📱
 
-- 카카오 알림톡 실제 발송
-- 실제 결제 처리
-- 급변동 심층분석 루프
-- 매수/매도 추천, 자동 주문, 투자 판단 대행
-- 대규모 다중 사용자 운영
+Discord 서버에서 `/finbrief` 또는 `@finbrief` 명령을 사용합니다.
 
-## 기술 스택
-
-| 영역 | 도구 |
-| --- | --- |
-| Backend | Python 3.11+, FastAPI |
-| Workflow | LangGraph |
-| Database/RAG | Supabase PostgreSQL + pgvector |
-| LLM Gateway | LiteLLM |
-| Observability | Langfuse |
-| UI | Streamlit 예정 |
-| Data | FRED, yfinance, ECOS, 경제 뉴스 RSS, fixture JSON |
-| Delivery | Discord/Slack webhook |
-| Infra | Docker, GitHub Actions, GCP Compute Engine |
-
-## 디렉터리 구조
-
-```text
-app/
-  api/            FastAPI route 모듈
-  agents/         LangGraph workflow
-  core/           공통 설정, 스키마, 안전 규칙, LLM gateway
-  repositories/   Supabase persistence adapter
-  tools/          데이터, 뉴스, 이미지, 발송 도구
-  ui/             Streamlit demo UI
-data/             seed 데이터와 로컬 fixture
-evals/            자동 평가 스키마와 평가 데이터셋
-reports/          로컬 생성 리포트 산출물
-schemas/          DB와 workflow 스키마 계약
-tests/            테스트 코드
-.github/          GitHub Actions CI/CD workflow
-project_docs/     기획서, 로드맵, 구현 기획, 운영 검증, 하네스 기록 문서
-ref/              원본 참고 문서
-```
-
-## 주요 파일
-
-| 파일 | 역할 |
-| --- | --- |
-| `app/main.py` | FastAPI 앱 팩토리와 루트 엔드포인트 |
-| `app/api/router.py` | API v1 라우터 집계 |
-| `app/api/dependencies.py` | FastAPI dependency와 repository bundle provider |
-| `app/api/routes_health.py` | health endpoint |
-| `app/api/routes_subscriptions.py` | 토픽 catalog·키워드 매칭(`POST /topics/match`)과 구독 추가/조회/삭제 API |
-| `app/api/routes_ingestion.py` | 선택 토픽 외부 데이터 수집과 Supabase 적재 API |
-| `app/api/routes_reports.py` | 수동 mock 리포트 실행과 최신 리포트 조회 API |
-| `app/api/routes_cards.py` | 사용자별 오늘의 카드 조회 API |
-| `app/agents/pipeline.py` | API에서 LangGraph를 실행하는 service wrapper |
-| `app/agents/graph.py`, `app/agents/nodes.py` | repository 구독 기반 mock 리포트/카드 생성 graph |
-| `app/agents/report_catalog.py`, `app/agents/report_render.py` | 21개 주요 지표 전체 리포트 PNG 생성 |
-| `app/services/topic_ingestion.py` | 선택 토픽 기준 FRED/yfinance/ECOS/RSS 수집, 뉴스 필터링, embedding 저장 service |
-| `app/services/chatbot.py` | Discord 관리 챗봇 intent parsing과 구독 tool 호출 |
-| `app/services/chatbot_persona.py`, `app/services/chatbot_responses.py`, `app/services/chatbot_suggestions.py` | 챗봇 persona, 안전 응답, 후보 토픽 제안 |
-| `app/services/discord_bot.py` | Discord slash command 엔트리포인트 |
-| `app/core/config.py` | `.env` 기반 설정 로더와 secret 마스킹 |
-| `app/core/schemas.py` | API, agent, repository가 공유하는 Pydantic 모델 |
-| `app/repositories/protocols.py` | API/LangGraph가 의존할 repository 계약 |
-| `app/repositories/memory.py` | Supabase 없이 테스트 가능한 in-memory repository |
-| `app/repositories/supabase.py` | Supabase table/RPC adapter |
-| `app/tools/data_sources/fred.py` | FRED observations 수집/정규화 |
-| `app/tools/data_sources/yfinance_source.py` | yfinance 가격 데이터 수집/정규화 |
-| `app/tools/data_sources/ecos.py` | 한국은행 ECOS 통계 수집/정규화 |
-| `app/tools/news/rss.py` | RSS entry 정규화, 중복 제거, 최신 뉴스 필터링 |
-| `app/tools/news/tagging.py` | 토픽 `news_keywords` 기반 뉴스 태깅 |
-| `app/tools/embedding/upstage.py` | passage/query embedding 입력 생성과 4096차원 검증 |
-| `data/default_topics.json` | 기본 토픽 카탈로그 fixture (지표/자산/섹터/키워드 100+개) |
-| `schemas/supabase.sql` | Supabase PostgreSQL + pgvector 테이블 구조 |
-| `schemas/seed_topics.sql` | 기본 토픽 카탈로그 seed SQL (`data/default_topics.json`과 동기화) |
-| `schemas/finbrief_state.schema.json` | LangGraph morning pipeline state 계약 |
-| `evals/finbrief_eval_set.schema.json` | 자동 평가 JSONL 항목 스키마 |
-| `.github/workflows/ci.yml` | compile, pytest, Docker build 자동 검증 |
-| `.github/workflows/cd.yml` | GHCR image build/push, GCE Compose 배포, health check, rollback |
-| `Dockerfile` | builder/runtime multi-stage FinBrief FastAPI 컨테이너 이미지 |
-| `docker-compose.yml` | 로컬/서버 공통 실행 단위 |
-| `.dockerignore` | secret, cache, 문서, 생성 산출물 build context 제외 |
-| `.env.example` | 로컬/배포 환경변수 템플릿 |
-| `pyproject.toml` | 패키지, 의존성, pytest 설정 |
-
-## 로컬 실행
-
-Windows PowerShell 기준입니다.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-```
-
-API 서버를 실행합니다.
-
-```powershell
-python -m uvicorn app.main:app --reload
-```
-
-브라우저 또는 터미널에서 health endpoint를 확인합니다.
-
-```powershell
-curl http://127.0.0.1:8000/api/v1/health
-```
-
-기대 응답:
-
-```json
-{
-  "status": "ok",
-  "service": "finbrief",
-  "version": "0.1.0",
-  "environment": "local",
-  "mock_data": true
-}
-```
-
-API 문서는 서버 실행 후 다음 주소에서 확인할 수 있습니다.
-
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
-
-구독과 mock 리포트/card 흐름은 다음 순서로 수동 확인할 수 있습니다.
-
-```powershell
-curl http://127.0.0.1:8000/api/v1/topics
-curl -X POST http://127.0.0.1:8000/api/v1/topics/match `
-  -H "Content-Type: application/json" `
-  -d "{\"query\":\"AI 반도체\",\"limit\":5}"
-curl -X POST http://127.0.0.1:8000/api/v1/subscriptions/u_001/topics `
-  -H "Content-Type: application/json" `
-  -d "{\"topic_id\":\"topic_btc\",\"channel\":\"discord\"}"
-curl http://127.0.0.1:8000/api/v1/subscriptions/u_001
-curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
-  -H "Content-Type: application/json" `
-  -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true}"
-curl "http://127.0.0.1:8000/api/v1/reports/today/explanation?run_date=2026-07-10"
-curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=u_001&run_date=2026-07-10"
-```
-
-## Discord 관리 챗봇
-
-Discord 챗봇은 `/finbrief` slash command로 사용자의 자연어 메시지를 받아 관심 토픽을 관리합니다. 응답 persona는 `브리핑 메이트`이며, 투자 판단이나 매수·매도 지시는 거절하고 구독 가능한 브리핑 토픽으로 안내합니다.
-
-대표 입력:
+대표 입력 예시는 다음과 같습니다.
 
 ```text
 /finbrief message: 나스닥 구독해줘
@@ -207,160 +47,324 @@ Discord 챗봇은 `/finbrief` slash command로 사용자의 자연어 메시지�
 /finbrief message: 오늘 리포트에서 뭐 봐야 해?
 ```
 
-주요 동작:
+### 사용 예시 💬
 
-- `구독`, `추가`, `등록` 표현은 토픽 추가로 처리합니다.
-- `삭제`, `취소`, `해지` 표현은 토픽 삭제로 처리합니다.
-- `내 토픽`, `목록`, `조회` 표현은 현재 구독 목록을 보여줍니다.
-- `오늘 리포트`, `변동 큰 지표`, `뭐 봐야 해?` 표현은 생성된 당일 지표 리포트에서 큰 변동과 RSS/RAG 근거를 설명합니다.
-- `금리`, `환율`처럼 후보가 여러 개인 키워드는 바로 저장하지 않고 후보 토픽을 제시합니다.
-- `사야 해?`, `매수`, `매도`, `목표가`처럼 투자 판단을 요구하는 표현은 차단하고 브리핑 구독 예시로 전환합니다.
+| 사용자가 입력 | FinBrief가 하는 일 |
+| --- | --- |
+| `나스닥 구독해줘` | 나스닥 토픽을 내 구독 목록에 추가합니다. |
+| `내 토픽 보여줘` | 현재 구독 중인 토픽과 구독 가능한 토픽을 표 형태로 보여줍니다. |
+| `금리 구독` | 여러 금리 토픽 후보를 제시하고, 사용자가 선택할 수 있게 안내합니다. |
+| `비트코인 취소해줘` | 비트코인 토픽을 구독 목록에서 제거합니다. |
+| `오늘 리포트에서 뭐 봐야 해?` | 당일 지표 리포트에서 크게 움직인 지표와 관련 뉴스 흐름을 설명합니다. |
 
-로컬에서 Discord bot을 직접 실행할 때는 `.env`에 `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`를 설정한 뒤 실행합니다.
+### 결과를 읽는 방법 📊
+
+**주요 지표 리포트**는 시장 전체를 빠르게 훑기 위한 이미지입니다.
+
+- 지수, 금리, 원자재, 환율 등 핵심 지표를 한 장에 표시합니다.
+- 상승과 하락 방향, 변화폭, 단위를 함께 확인합니다.
+- 일부 데이터가 부족하면 가능한 값만 표시하고, 잘못된 값은 그대로 확정하지 않습니다.
+
+**토픽별 카드뉴스**는 내가 구독한 주제만 따로 정리한 결과입니다.
+
+- 토픽 이름과 핵심 요약
+- 관련 지표 또는 가격 변화
+- RSS 뉴스 기반 근거
+- 투자 조언이 아니라는 안내 문구
+
+### 꼭 알아둘 점 ⚠️
+
+- FinBrief는 투자 조언 서비스가 아닙니다.
+- 매수, 매도, 목표가, 수익 보장 같은 투자 판단은 제공하지 않습니다.
+- 뉴스와 지표는 외부 데이터 소스를 기반으로 하므로, 발표 시점이나 수집 시점에 따라 최신 값과 차이가 있을 수 있습니다.
+- 챗봇이 토픽을 정확히 이해하지 못하면 후보를 먼저 제시합니다. 이 경우 원하는 토픽명을 다시 입력하면 됩니다.
+
+---
+
+## 2. 외부 개발자용 안내 🛠️
+
+이 영역은 FinBrief를 로컬에서 실행하거나, 구조를 이해하거나, 배포 환경을 구성하려는 개발자를 위한 설명입니다.
+
+### 프로젝트 개요 🏗️
+
+FinBrief는 FastAPI 기반 백엔드와 LangGraph 에이전트 파이프라인으로 구성됩니다. 외부 데이터 소스에서 금융 지표와 뉴스를 수집하고, Supabase PostgreSQL과 pgvector에 저장한 뒤, RAG 검색과 LLM 분석을 통해 리포트와 카드뉴스를 생성합니다.
+
+전체 흐름은 다음과 같습니다.
+
+```text
+사용자 토픽 구독
+  -> 토픽 매칭
+  -> 외부 지표/뉴스 수집
+  -> Supabase 저장
+  -> 뉴스 임베딩 및 RAG 검색
+  -> LangGraph 리포트/카드 생성
+  -> 웹 화면/API/Discord 전달
+  -> Langfuse 관측성 기록
+```
+
+### 기술 스택 💻
+
+| 영역 | 사용 기술 |
+| --- | --- |
+| Backend | Python 3.11, FastAPI |
+| Agent workflow | LangGraph |
+| LLM gateway | LiteLLM |
+| Observability | Langfuse |
+| Database/RAG | Supabase PostgreSQL, pgvector |
+| Data sources | FRED, yfinance, 한국은행 ECOS, RSS |
+| Image/report | Pillow, Gemini image model |
+| Bot/Delivery | Discord.py |
+| Infra | Docker, Docker Compose, GitHub Actions, GCE |
+
+### 사전 준비 📋
+
+실데이터 실행에는 다음 외부 리소스가 필요합니다.
+
+| 준비 항목 | 설명 |
+| --- | --- |
+| Supabase project | `schemas/supabase.sql` 실행, service role key 준비 |
+| Upstage API key | LLM 호출과 4096차원 embedding 생성 |
+| Gemini API key | 카드/리포트 이미지 생성 |
+| FRED API key | 미국 경제 지표 수집 |
+| ECOS API key | 한국은행 통계 수집 |
+| 뉴스 RSS URL | 경제/시장 뉴스 수집 URL 목록 |
+| Discord bot token | `/finbrief` 명령과 채널 발송 |
+| Langfuse key | LLM 호출과 report run 관측성 |
+
+Supabase SQL Editor에서 먼저 실행합니다.
+
+```sql
+-- schemas/supabase.sql 전체 실행
+```
+
+토픽 seed가 필요한 경우 다음 파일도 실행합니다.
+
+```sql
+-- schemas/seed_topics.sql 전체 실행
+```
+
+### 환경변수 ⚙️
+
+`.env.example`을 복사한 뒤 실제 값을 채웁니다. 실제 secret은 Git에 커밋하지 않습니다.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+주요 환경변수는 다음과 같습니다.
+
+| 변수 | 설명 |
+| --- | --- |
+| `APP_ENV` | 실행 환경. 로컬 개발은 `local`, 배포 환경은 `prod` 권장 |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | 서버 측 Supabase service role key |
+| `UPSTAGE_API_KEY` | LLM 및 embedding 호출 key |
+| `GEMINI_API_KEY` | 이미지 생성 key |
+| `FRED_API_KEY` | FRED 지표 수집 key |
+| `ECOS_API_KEY` | 한국은행 ECOS 지표 수집 key |
+| `NEWS_RSS_URLS` | 쉼표로 구분한 뉴스 RSS URL 목록 |
+| `DISCORD_BOT_TOKEN` | Discord bot token |
+| `DISCORD_GUILD_ID` | slash command를 동기화할 Discord guild id |
+| `LANGFUSE_ENABLED` | Langfuse 전송 활성화 여부 |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | Langfuse secret key |
+| `LANGFUSE_HOST` | Langfuse host URL |
+| `FINBRIEF_REPORT_OUT` | 리포트 이미지 출력 경로 |
+| `FINBRIEF_FONT` | 한글 리포트 렌더링용 폰트 경로 |
+| `SERVICE_PORT` | Docker Compose 노출 포트. 기본값 `8000` |
+
+### 로컬 실행 💻
+
+Windows PowerShell 기준입니다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+```
+
+`.env`에 실데이터 값을 채운 뒤 API 서버를 실행합니다.
+
+```powershell
+python -m uvicorn app.main:app --reload
+```
+
+확인 주소:
+
+- 웹 화면: `http://127.0.0.1:8000/`
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- Health check: `http://127.0.0.1:8000/api/v1/health`
+
+### 주요 API 🔑
+
+토픽 목록 조회:
+
+```powershell
+curl http://127.0.0.1:8000/api/v1/topics
+```
+
+키워드로 토픽 찾기:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/topics/match `
+  -H "Content-Type: application/json" `
+  -d "{\"query\":\"비트코인\",\"limit\":5}"
+```
+
+토픽 구독:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/subscriptions/demo-user/topics `
+  -H "Content-Type: application/json" `
+  -d "{\"topic_id\":\"topic_btc\",\"channel\":\"discord\"}"
+```
+
+선택 토픽 데이터 수집과 Supabase 적재:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/topics/topic_btc/ingest `
+  -H "Content-Type: application/json" `
+  -d "{\"run_date\":\"2026-07-14\",\"include_indicators\":true,\"include_news\":true,\"include_embeddings\":true,\"dry_run\":false}"
+```
+
+구독 중인 토픽을 새로 수집한 뒤 리포트 생성:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
+  -H "Content-Type: application/json" `
+  -d "{\"run_date\":\"2026-07-14\",\"dry_run\":false,\"refresh_data\":true}"
+```
+
+오늘 리포트 설명:
+
+```powershell
+curl "http://127.0.0.1:8000/api/v1/reports/today/explanation?run_date=2026-07-14"
+```
+
+사용자 카드 조회:
+
+```powershell
+curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=demo-user&run_date=2026-07-14"
+```
+
+### Discord bot 실행 🤖
+
+Discord Developer Portal에서 bot token, guild id, message content intent, `applications.commands` scope를 확인합니다.
 
 ```powershell
 python -m app.services.discord_bot
 ```
 
-실제 Supabase/RAG 적재 모드에서는 `.env`에 `ENABLE_MOCK_DATA=false`, Supabase service role key,
-`UPSTAGE_API_KEY`, 필요한 외부 데이터 API key/RSS URL을 설정한 뒤 선택 토픽 단위로 적재할 수 있습니다.
+Supabase 연결이 설정되어 있으면 구독 상태는 DB에 저장됩니다.
+
+### 배치와 스케줄러 ⏰
+
+전체 시장 리포트와 구독 토픽 카드 생성을 한 번 실행합니다.
 
 ```powershell
-curl -X POST http://127.0.0.1:8000/api/v1/topics/topic_btc/ingest `
-  -H "Content-Type: application/json" `
-  -d "{\"run_date\":\"2026-07-10\",\"include_indicators\":true,\"include_news\":true,\"include_embeddings\":true}"
-
-curl -X POST http://127.0.0.1:8000/api/v1/reports/run `
-  -H "Content-Type: application/json" `
-  -d "{\"run_date\":\"2026-07-10\",\"dry_run\":true,\"refresh_data\":true}"
+python -m app.services.batch
 ```
 
-## Docker 실행
-
-Docker Desktop 또는 Docker Engine이 실행 중인 상태에서 다음 명령으로 로컬 컨테이너를 빌드하고 실행합니다.
-Dockerfile은 builder stage에서 FinBrief wheel과 의존성 wheel을 생성하고, runtime stage에서 해당 wheelhouse만 설치하는 multi-stage 구조입니다. 기존 Compose 실행 방식과 GCE CD 배포 방식은 그대로 유지됩니다.
+스케줄러는 매일 지정한 KST 시각에 배치를 실행합니다.
 
 ```powershell
-Copy-Item .env.example .env
+python -m app.services.scheduler
+```
+
+관련 환경변수:
+
+```text
+FINBRIEF_BATCH_HOUR=7
+FINBRIEF_BATCH_MINUTE=0
+FINBRIEF_RUN_ON_START=1
+```
+
+### Docker 실행 🐳
+
+Docker Desktop 또는 Docker Engine이 실행 중이어야 합니다.
+
+```powershell
 docker compose up -d --build
 curl http://127.0.0.1:8000/api/v1/health
 docker compose ps
 ```
 
-종료할 때는 다음 명령을 사용합니다.
+종료:
 
 ```powershell
 docker compose down
 ```
 
-기본 Compose 설정은 `ENABLE_MOCK_DATA=true`, `FINBRIEF_LLM_STUB=1`, `FINBRIEF_IMAGE_STUB=1`, `DELIVERY_DRY_RUN=true`를 사용하므로 외부 API key 없이 health와 mock 리포트 경로를 먼저 확인할 수 있습니다. 서비스 포트는 `.env`의 `SERVICE_PORT`로 바꿀 수 있습니다.
+Compose에는 세 가지 서비스가 포함됩니다.
 
-## CI/CD
+| 서비스 | 역할 |
+| --- | --- |
+| `finbrief-api` | FastAPI API와 웹 화면 제공 |
+| `finbrief-bot` | Discord 챗봇 실행 |
+| `finbrief-scheduler` | 매일 아침 배치 실행 |
 
-GitHub Actions workflow는 두 단계로 구성되어 있습니다.
+### CI/CD 🚀
 
-| Workflow | Trigger | 역할 |
+GitHub Actions는 테스트와 배포를 분리합니다.
+
+| Workflow | 실행 시점 | 역할 |
 | --- | --- | --- |
-| `FinBrief CI` | `push`, `pull_request`, `workflow_dispatch` | Python 3.11 설치, `compileall`, 전체 pytest, Docker build |
-| `FinBrief CD` | `FinBrief CI`의 main 성공 후, 또는 수동 실행 | GHCR image build/push, GCE SSH 배포, `/api/v1/health` 확인, rollback |
+| `FinBrief CI` | push, pull request, 수동 실행 | Python compile, pytest, Docker build |
+| `FinBrief CD` | main CI 성공 후 또는 수동 실행 | GHCR 이미지 빌드/푸시, GCE 배포, health check, rollback |
 
-CI는 secret 없이 mock/stub mode로 실행됩니다. CD를 사용하려면 GitHub Settings에서 다음 Secrets를 먼저 준비합니다.
+GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API, Discord, Langfuse, GCE SSH 정보를 등록해야 합니다.
 
-| Secret | 용도 |
+최소 GCE 배포 Secret은 다음과 같습니다.
+
+| Secret | 설명 |
 | --- | --- |
-| `GCE_HOST` | GCP Compute Engine 외부 IP 또는 도메인 |
-| `GCE_USERNAME` | 배포 서버 Linux 사용자 |
-| `GCE_SSH_KEY` | 배포 서버 접속용 private key |
-| `SERVICE_PORT` | 배포 포트. 기본값 `8000` |
-| `ENABLE_MOCK_DATA` | 첫 배포 권장값 `true` |
-| `FINBRIEF_LLM_STUB`, `FINBRIEF_IMAGE_STUB`, `DELIVERY_DRY_RUN` | 첫 배포 권장값 `1`, `1`, `true` |
+| `GCE_HOST` | GCE VM 외부 IP 또는 도메인 |
+| `GCE_USERNAME` | SSH 접속 사용자 |
+| `GCE_SSH_KEY` | 배포용 private key |
+| `SERVICE_PORT` | 서비스 포트. 기본값 `8000` |
 
-실데이터 모드로 전환할 때는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_WEBHOOK_URL` 등을 추가하고 `ENABLE_MOCK_DATA=false`로 바꿉니다.
+실데이터 운영에는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`도 함께 등록합니다.
 
-## 환경변수
+수동 배포는 GitHub `Actions` -> `FinBrief CD` -> `Run workflow`에서 실행합니다.
 
-기본값은 `.env.example`에 정리되어 있습니다. 실제 secret은 `.env`에만 입력하고 Git에 커밋하지 않습니다.
+### 프로젝트 구조 🏗️
 
-| 변수 | 용도 |
-| --- | --- |
-| `APP_NAME`, `APP_VERSION`, `APP_ENV` | 서비스 이름, 버전, 실행 환경 |
-| `API_V1_PREFIX` | API prefix. 기본값은 `/api/v1` |
-| `ENABLE_MOCK_DATA` | fixture/mock 데이터 사용 여부 |
-| `SERVICE_PORT`, `APP_IMAGE` | Docker Compose 포트와 이미지 지정 |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase 연결 정보 |
-| `LITELLM_MODEL`, `LITELLM_FALLBACK_MODEL`, `UPSTAGE_API_KEY`, `FINBRIEF_LLM_STUB` | LLM gateway와 모델 설정 |
-| `FINBRIEF_LLM_TIMEOUT_SECONDS`, `FINBRIEF_LLM_NUM_RETRIES` | LiteLLM 호출 timeout/retry 설정 |
-| `FINBRIEF_LLM_GUARDRAIL_ENABLED`, `FINBRIEF_LLM_FORBIDDEN_TERMS`, `FINBRIEF_LLM_PII_MASKING` | 앱 내부 금융 안전 guardrail과 PII masking |
-| `LITELLM_PROXY_URL`, `LITELLM_MASTER_KEY`, `LITELLM_GUARDRAILS` | 선택적 LiteLLM Proxy 전환 설정 |
-| `LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | LLMOps trace 기본 설정 |
-| `LANGFUSE_BASE_URL`, `LANGFUSE_OTEL_HOST`, `LANGFUSE_CAPTURE_IO`, `LANGFUSE_FLUSH_ON_SHUTDOWN` | Langfuse SDK/LiteLLM OTEL 세부 설정 |
-| `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 지표와 뉴스 수집 설정 |
-| `GEMINI_API_KEY`, `FINBRIEF_IMAGE_MODEL`, `FINBRIEF_IMAGE_STUB` | 이미지 생성 설정 |
-| `FINBRIEF_FONT`, `FINBRIEF_REPORT_OUT` | 한글 폰트 경로와 전체 리포트 이미지 출력 경로 |
-| `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `DELIVERY_DRY_RUN` | 발송 채널 설정 |
+```text
+app/
+  api/             FastAPI route
+  agents/          LangGraph 리포트/카드 생성 pipeline
+  core/            설정, schema, LLM, guardrail, observability
+  repositories/    Supabase 저장소와 개발용 memory 저장소
+  services/        챗봇, 배치, 스케줄러, 데이터 적재 서비스
+  tools/           외부 데이터, RSS, embedding, 발송 도구
+frontend/          배포본에 포함되는 결과 확인 화면
+schemas/           Supabase SQL과 agent state schema
+tests/             자동 테스트
+.github/workflows/ CI/CD workflow
+```
 
-실제 외부 데이터/RAG 적재를 실행하려면 사용자가 `.env`에 다음 값을 준비합니다. 키가 비어 있어도 local/test는 mock 또는 빈 결과로 동작합니다.
+### 검증 🔍
 
-| 준비 항목 | 필요 시점 |
-| --- | --- |
-| `FRED_API_KEY` | FRED 실제 지표 수집 |
-| `ECOS_API_KEY` | 한국은행 ECOS 실제 통계 수집 |
-| `NEWS_RSS_URLS` | 뉴스 RSS 실제 수집. 콤마 구분 URL 목록 |
-| `UPSTAGE_API_KEY` | 뉴스 passage/query embedding 실제 생성 |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase DB 적재 |
-| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse 실제 trace 전송 |
-
-`ENABLE_MOCK_DATA=false`로 두면 morning pipeline이 실데이터 모드(`live_data`)로 전환된다.
-이 모드에서 `ingest_news`는 RSS→태깅→Supabase 적재를, `collect_indicators`는 토픽
-`source_mapping` 기반 지표 수집을, `retrieve_evidence`는 `match_news` RPC(RAG)를 실제로 조회한다.
-
-### LiteLLM Guardrail / Fallback
-
-FinBrief는 MVP 기준으로 LiteLLM Python SDK 직접 호출을 사용합니다. `LITELLM_FALLBACK_MODEL`을 설정하면 `chat_json()` 호출에 LiteLLM fallback 후보가 전달되고, 모델 호출 실패나 guardrail 위반이 발생하면 카드 분석 노드는 deterministic local template로 복구합니다.
-
-기본 guardrail은 앱 내부에서 수행됩니다.
-
-- email/webhook/API key 형태의 민감 문자열을 LLM 입력과 출력 JSON에서 masking
-- 카드 분석 결과의 필수 JSON key 확인
-- `확정 수익`, `반드시 수익`, `지금 사야`, `원금 보장` 등 보장·명령형 투자 조언 표현 차단
-- 차단 시 전체 pipeline 중단 대신 local card fallback 사용
-
-LiteLLM Proxy 기반 guardrail은 선택 사항입니다. 예시 설정은 `config/litellm_config.yaml.example`에 있으며, 별도 Proxy 서비스를 운영할 때만 사용합니다.
-`true`(기본값)에서는 fixture로 동작하므로 키 없이 로컬/테스트가 가능하다.
-
-선택 토픽 적재 API는 `ENABLE_MOCK_DATA=false`에서 Supabase에 실제 upsert를 수행한다.
-`ENABLE_MOCK_DATA=true`에서는 기본 dependency가 Supabase ingestion repository를 만들지 않으므로,
-실제 저장 테스트는 live 설정 또는 테스트용 dependency override로 수행한다.
-
-## 검증
+개발 중 기본 검증:
 
 ```powershell
 python -m compileall app
-python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-ci --disable-warnings
+python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-local --disable-warnings
 docker compose config
 ```
 
-현재 기준 검증 결과:
+배포 후 확인:
 
-- `python -m compileall app`: 통과
-- `python -m pytest -p no:cacheprovider --basetemp .pytest_cache\basetemp-docker-multistage --disable-warnings`: 통과
-- `docker compose config`: 통과
-- `docker build -t finbrief:multi-stage -f Dockerfile .`: Docker Desktop Linux Engine 미실행으로 이번 작업에서 미검증
-- `docker run ... finbrief:multi-stage` health smoke: Docker build 미수행으로 이번 작업에서 미검증
-- `GET /api/v1/health`: 로컬 서버 미실행으로 이번 작업에서 재확인하지 않음
+```powershell
+curl http://127.0.0.1:8000/api/v1/health
+curl http://127.0.0.1:8000/api/v1/topics
+```
 
-## 개발 원칙
+### 운영 원칙 📋
 
-- API key, webhook URL, Langfuse secret은 코드에 직접 쓰지 않습니다.
-- 생성되는 모든 리포트와 카드에는 "투자 조언이 아닌 참고용" disclaimer를 포함합니다.
-- 매수/매도 추천, 수익 보장, 자동 주문 기능은 구현하지 않습니다.
-- MVP는 먼저 한 개의 end-to-end 흐름을 완주시키고, 이후 범위를 넓힙니다.
-- 구현 결과는 `project_docs/02_기획_로드맵/작업_계획_마일스톤.md`, `project_docs/05_운영_검증/테스트_계획_및_검증_기준.md`, `project_docs/05_운영_검증/현재_세션_상태.md` 등 하네스 문서와 동기화합니다.
-
-## 다음 작업
-
-1. GitHub Secrets와 GCE VM을 준비한 뒤 `FinBrief CD`를 수동 실행
-2. 첫 배포는 mock/stub mode로 `/api/v1/health` 확인
-3. live secret을 채운 뒤 Supabase/RAG smoke test 수행
-4. GCE에서 Langfuse 실제 trace smoke test 수행
-5. 자동 평가 scaffold와 Langfuse score 연결
+- 실제 secret은 `.env` 또는 GitHub Secrets에만 둡니다.
+- `.env`, private key, 생성 산출물은 Git에 커밋하지 않습니다.
+- Supabase schema와 외부 API key를 준비한 뒤 실행합니다.
+- 모든 리포트와 카드에는 투자 조언이 아니라는 disclaimer를 유지합니다.
+- 사용자 입력이 모호하면 바로 저장하지 않고 후보 토픽을 안내합니다.
