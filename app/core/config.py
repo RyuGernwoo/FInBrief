@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     upstage_api_key: SecretStr | None = None
     finbrief_llm_stub: bool = True
     finbrief_llm_timeout_seconds: int = Field(default=30, gt=0)
-    finbrief_llm_num_retries: int = Field(default=2, ge=0)
+    finbrief_llm_num_retries: int = Field(default=4, ge=0)   # 병렬 카드 생성 시 레이트리밋 버스트 대비
     finbrief_llm_guardrail_enabled: bool = True
     finbrief_llm_require_json: bool = True
     finbrief_llm_require_disclaimer: bool = True
