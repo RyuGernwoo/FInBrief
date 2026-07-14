@@ -34,7 +34,7 @@ FinBrief가 이미 배포되어 있고, 사용자는 서비스를 이용하기�
 
 ### Discord 챗봇 이용 📱
 
-Discord 서버에서 `/finbrief` 명령을 사용합니다.
+Discord 서버에서 `/finbrief` 또는 `@finbrief` 명령을 사용합니다.
 
 대표 입력 예시는 다음과 같습니다.
 
@@ -314,6 +314,17 @@ GitHub Actions는 테스트와 배포를 분리합니다.
 | `FinBrief CD` | main CI 성공 후 또는 수동 실행 | GHCR 이미지 빌드/푸시, GCE 배포, health check, rollback |
 
 GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API, Discord, Langfuse, GCE SSH 정보를 등록해야 합니다.
+
+최소 GCE 배포 Secret은 다음과 같습니다.
+
+| Secret | 설명 |
+| --- | --- |
+| `GCE_HOST` | GCE VM 외부 IP 또는 도메인 |
+| `GCE_USERNAME` | SSH 접속 사용자 |
+| `GCE_SSH_KEY` | 배포용 private key |
+| `SERVICE_PORT` | 서비스 포트. 기본값 `8000` |
+
+실데이터 운영에는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`도 함께 등록합니다.
 
 수동 배포는 GitHub `Actions` -> `FinBrief CD` -> `Run workflow`에서 실행합니다.
 
