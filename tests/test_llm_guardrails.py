@@ -32,7 +32,23 @@ def test_validate_card_json_rejects_forbidden_financial_advice():
         validate_json_payload(payload, profile="card", settings=Settings())
 
     assert exc_info.value.reason == "forbidden_terms"
-    assert "매수" in exc_info.value.details["terms"]
+    assert "반드시 수익" in exc_info.value.details["terms"]
+
+
+def test_validate_card_json_allows_market_descriptive_trading_terms():
+    from app.core.llm_guardrails import validate_json_payload
+    from app.core.config import Settings
+
+    payload = {
+        "headline": "매수세 유입",
+        "lead": "위험자산 선호가 회복됐습니다.",
+        "body": "기관 매도 압력은 남아 있지만 장기 보유 심리가 일부 개선됐다는 보도입니다.",
+        "source": "예시통신",
+    }
+
+    result = validate_json_payload(payload, profile="card", settings=Settings())
+
+    assert result["headline"] == "매수세 유입"
 
 
 def test_validate_card_json_requires_card_keys():

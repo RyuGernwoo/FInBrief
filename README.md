@@ -319,7 +319,7 @@ FinBrief는 MVP 기준으로 LiteLLM Python SDK 직접 호출을 사용합니다
 
 - email/webhook/API key 형태의 민감 문자열을 LLM 입력과 출력 JSON에서 masking
 - 카드 분석 결과의 필수 JSON key 확인
-- `매수`, `매도`, `목표가`, `확정 수익` 등 투자 조언성 금칙어 차단
+- `확정 수익`, `반드시 수익`, `지금 사야`, `원금 보장` 등 보장·명령형 투자 조언 표현 차단
 - 차단 시 전체 pipeline 중단 대신 local card fallback 사용
 
 LiteLLM Proxy 기반 guardrail은 선택 사항입니다. 예시 설정은 `config/litellm_config.yaml.example`에 있으며, 별도 Proxy 서비스를 운영할 때만 사용합니다.

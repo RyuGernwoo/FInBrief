@@ -46,10 +46,6 @@ class Settings(BaseSettings):
     finbrief_llm_require_disclaimer: bool = True
     finbrief_llm_forbidden_terms: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
-            "매수",
-            "매도",
-            "보유",
-            "목표가",
             "확정 수익",
             "무조건 상승",
             "반드시 수익",
@@ -58,6 +54,10 @@ class Settings(BaseSettings):
             "지금 팔아야",
             "손실 없음",
             "보장 수익",
+            "수익 보장",
+            "원금 보장",
+            "무조건 매수",
+            "무조건 매도",
         ]
     )
     finbrief_llm_pii_masking: bool = True
