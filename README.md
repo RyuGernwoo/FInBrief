@@ -1,34 +1,123 @@
-# FinBrief
+# FinBrief 📊
 
-FinBrief는 사용자가 관심 있는 금융 토픽을 구독하면, 실제 시장 지표와 경제 뉴스를 수집해 아침 브리핑으로 정리하는 AI 금융 브리핑 서비스입니다.
+FinBrief는 사용자가 관심 있는 금융 토픽을 구독하면 실제 시장 지표와 경제 뉴스를 수집해 아침 브리핑으로 정리하는 AI 금융 브리핑 서비스입니다.
 
-Discord 챗봇 또는 API로 관심 토픽을 등록하면 FinBrief가 FRED, yfinance, 한국은행 ECOS, 뉴스 RSS를 수집하고, Supabase RAG 검색과 LLM 분석을 거쳐 전체 시장 리포트와 토픽별 카드뉴스를 생성합니다. 결과는 웹 화면, API, Discord 알림으로 확인할 수 있습니다.
+사용자는 배포된 웹 화면이나 Discord 챗봇에서 관심 토픽을 관리하고, 전체 시장 리포트와 토픽별 카드뉴스를 확인할 수 있습니다. FinBrief는 투자 판단을 대신하지 않으며, 모든 결과는 참고용 정보로만 제공됩니다.
 
-> FinBrief는 투자 조언 서비스가 아닙니다. 매수, 매도, 목표가, 수익 보장 같은 투자 판단은 제공하지 않고 참고용 정보만 제공합니다.
+---
 
-## 주요 기능
+## 1. 일반 사용자용 안내
 
-- 관심 토픽 구독: 비트코인, 나스닥, 환율, 금리, 반도체, AI 등 금융 토픽을 구독합니다.
-- 자연어 챗봇: Discord에서 "나스닥 구독", "내 토픽 보여줘", "오늘 리포트 설명해줘"처럼 사용할 수 있습니다.
-- 실데이터 수집: FRED, yfinance, ECOS, RSS에서 지표와 뉴스를 가져옵니다.
-- RAG 검색: Supabase PostgreSQL + pgvector에 저장된 뉴스 근거를 토픽별로 검색합니다.
-- 주요 지표 리포트: 주식 지수, 금리, 원자재, 환율 등 핵심 지표를 이미지 리포트로 생성합니다.
-- 토픽별 카드뉴스: 구독한 토픽마다 요약, 근거 뉴스, 안전 문구가 포함된 카드뉴스를 만듭니다.
-- 리포트 설명: 당일 리포트에서 변동이 큰 지표와 관련 뉴스 근거를 설명합니다.
-- 운영 지원: Docker, GitHub Actions CI/CD, GCE 배포, Langfuse 관측성 설정을 포함합니다.
+이 영역은 FinBrief가 이미 배포되어 있고, 사용자는 서비스를 이용하기만 한다는 가정으로 설명합니다. 별도의 설치, API key, 서버 설정은 필요하지 않습니다.
 
-## 사용 흐름
+### FinBrief로 할 수 있는 일
 
-1. 운영자가 Supabase schema와 외부 API key를 준비합니다.
-2. 사용자가 Discord 또는 API로 관심 토픽을 구독합니다.
-3. FinBrief가 구독 토픽에 필요한 지표와 뉴스를 수집해 Supabase에 저장합니다.
-4. LangGraph pipeline이 RAG 근거를 조회하고 전체 리포트와 카드뉴스를 생성합니다.
-5. 사용자는 웹 화면, API, Discord에서 결과를 확인합니다.
-6. 필요한 경우 "오늘 뭐 봐야 해?"처럼 챗봇에게 리포트 해설을 요청합니다.
+| 기능 | 설명 |
+| --- | --- |
+| 관심 토픽 구독 | 비트코인, 나스닥, 환율, 금리, 반도체, AI 등 보고 싶은 금융 토픽을 등록합니다. |
+| 구독 목록 확인 | 현재 내가 구독 중인 토픽과 구독 가능한 토픽을 확인합니다. |
+| 토픽 삭제 | 더 이상 보고 싶지 않은 토픽을 구독 목록에서 제거합니다. |
+| 주요 지표 리포트 확인 | 주식 지수, 금리, 원자재, 환율 등 핵심 지표를 이미지 리포트로 봅니다. |
+| 토픽별 카드뉴스 확인 | 내가 구독한 토픽에 대해 수치, 요약, 관련 뉴스 근거가 포함된 카드뉴스를 받습니다. |
+| 오늘 리포트 설명 요청 | 당일 리포트에서 변동이 큰 지표와 함께 봐야 할 뉴스 흐름을 설명받습니다. |
 
-## 사전 준비
+### 웹 화면 이용
 
-실데이터 실행에는 다음 준비가 필요합니다.
+운영자가 안내한 FinBrief 웹 주소에 접속하면 다음 정보를 확인할 수 있습니다.
+
+- 오늘의 주요 지표 리포트
+- 구독 토픽별 카드뉴스
+- 리포트 설명과 참고 문구
+
+웹 화면은 결과 확인용입니다. 토픽 구독과 삭제는 Discord 챗봇에서 진행하는 흐름을 기본으로 합니다.
+
+### Discord 챗봇 이용
+
+Discord 서버에서 `/finbrief` 명령을 사용합니다.
+
+대표 입력 예시는 다음과 같습니다.
+
+```text
+/finbrief message: 나스닥 구독해줘
+/finbrief message: 내 토픽 보여줘
+/finbrief message: 비트코인 취소해줘
+/finbrief message: 금리 구독
+/finbrief message: 처음인데 뭐 받아보면 좋아?
+/finbrief message: 오늘 리포트에서 뭐 봐야 해?
+```
+
+### 사용 예시
+
+| 사용자가 입력 | FinBrief가 하는 일 |
+| --- | --- |
+| `나스닥 구독해줘` | 나스닥 토픽을 내 구독 목록에 추가합니다. |
+| `내 토픽 보여줘` | 현재 구독 중인 토픽과 구독 가능한 토픽을 표 형태로 보여줍니다. |
+| `금리 구독` | 여러 금리 토픽 후보를 제시하고, 사용자가 선택할 수 있게 안내합니다. |
+| `비트코인 취소해줘` | 비트코인 토픽을 구독 목록에서 제거합니다. |
+| `오늘 리포트에서 뭐 봐야 해?` | 당일 지표 리포트에서 크게 움직인 지표와 관련 뉴스 흐름을 설명합니다. |
+
+### 결과를 읽는 방법
+
+주요 지표 리포트는 시장 전체를 빠르게 훑기 위한 이미지입니다.
+
+- 지수, 금리, 원자재, 환율 등 핵심 지표를 한 장에 표시합니다.
+- 상승과 하락 방향, 변화폭, 단위를 함께 확인합니다.
+- 일부 데이터가 부족하면 가능한 값만 표시하고, 잘못된 값은 그대로 확정하지 않습니다.
+
+토픽별 카드뉴스는 내가 구독한 주제만 따로 정리한 결과입니다.
+
+- 토픽 이름과 핵심 요약
+- 관련 지표 또는 가격 변화
+- RSS 뉴스 기반 근거
+- 투자 조언이 아니라는 안내 문구
+
+### 꼭 알아둘 점
+
+- FinBrief는 투자 조언 서비스가 아닙니다.
+- 매수, 매도, 목표가, 수익 보장 같은 투자 판단은 제공하지 않습니다.
+- 뉴스와 지표는 외부 데이터 소스를 기반으로 하므로, 발표 시점이나 수집 시점에 따라 최신 값과 차이가 있을 수 있습니다.
+- 챗봇이 토픽을 정확히 이해하지 못하면 후보를 먼저 제시합니다. 이 경우 원하는 토픽명을 다시 입력하면 됩니다.
+
+---
+
+## 2. 외부 개발자용 안내
+
+이 영역은 FinBrief를 로컬에서 실행하거나, 구조를 이해하거나, 배포 환경을 구성하려는 개발자를 위한 설명입니다.
+
+### 프로젝트 개요
+
+FinBrief는 FastAPI 기반 백엔드와 LangGraph 에이전트 파이프라인으로 구성됩니다. 외부 데이터 소스에서 금융 지표와 뉴스를 수집하고, Supabase PostgreSQL과 pgvector에 저장한 뒤, RAG 검색과 LLM 분석을 통해 리포트와 카드뉴스를 생성합니다.
+
+전체 흐름은 다음과 같습니다.
+
+```text
+사용자 토픽 구독
+  -> 토픽 매칭
+  -> 외부 지표/뉴스 수집
+  -> Supabase 저장
+  -> 뉴스 임베딩 및 RAG 검색
+  -> LangGraph 리포트/카드 생성
+  -> 웹 화면/API/Discord 전달
+  -> Langfuse 관측성 기록
+```
+
+### 기술 스택
+
+| 영역 | 사용 기술 |
+| --- | --- |
+| Backend | Python 3.11, FastAPI |
+| Agent workflow | LangGraph |
+| LLM gateway | LiteLLM |
+| Observability | Langfuse |
+| Database/RAG | Supabase PostgreSQL, pgvector |
+| Data sources | FRED, yfinance, 한국은행 ECOS, RSS |
+| Image/report | Pillow, Gemini image model |
+| Bot/Delivery | Discord.py |
+| Infra | Docker, Docker Compose, GitHub Actions, GCE |
+
+### 사전 준비
+
+실데이터 실행에는 다음 외부 리소스가 필요합니다.
 
 | 준비 항목 | 설명 |
 | --- | --- |
@@ -53,52 +142,37 @@ Supabase SQL Editor에서 먼저 실행합니다.
 -- schemas/seed_topics.sql 전체 실행
 ```
 
-## 환경변수
+### 환경변수
 
-`.env.example`을 복사한 뒤 실데이터 값을 채웁니다. 실제 secret은 Git에 커밋하지 않습니다.
+`.env.example`을 복사한 뒤 실제 값을 채웁니다. 실제 secret은 Git에 커밋하지 않습니다.
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-필수 운영값:
+주요 환경변수는 다음과 같습니다.
 
-```text
-APP_ENV=local
-ENABLE_MOCK_DATA=false
-FINBRIEF_LLM_STUB=0
-FINBRIEF_IMAGE_STUB=0
-DELIVERY_DRY_RUN=false
-
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-UPSTAGE_API_KEY=
-GEMINI_API_KEY=
-FRED_API_KEY=
-ECOS_API_KEY=
-NEWS_RSS_URLS=
-
-DISCORD_BOT_TOKEN=
-DISCORD_GUILD_ID=
-
-LANGFUSE_ENABLED=true
-LANGFUSE_PUBLIC_KEY=
-LANGFUSE_SECRET_KEY=
-LANGFUSE_HOST=https://cloud.langfuse.com
-```
-
-선택값:
-
-| 변수 | 용도 |
+| 변수 | 설명 |
 | --- | --- |
-| `SERVICE_PORT` | Docker Compose 노출 포트. 기본값 `8000` |
+| `APP_ENV` | 실행 환경. 로컬 개발은 `local`, 배포 환경은 `prod` 권장 |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | 서버 측 Supabase service role key |
+| `UPSTAGE_API_KEY` | LLM 및 embedding 호출 key |
+| `GEMINI_API_KEY` | 이미지 생성 key |
+| `FRED_API_KEY` | FRED 지표 수집 key |
+| `ECOS_API_KEY` | 한국은행 ECOS 지표 수집 key |
+| `NEWS_RSS_URLS` | 쉼표로 구분한 뉴스 RSS URL 목록 |
+| `DISCORD_BOT_TOKEN` | Discord bot token |
+| `DISCORD_GUILD_ID` | slash command를 동기화할 Discord guild id |
+| `LANGFUSE_ENABLED` | Langfuse 전송 활성화 여부 |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | Langfuse secret key |
+| `LANGFUSE_HOST` | Langfuse host URL |
 | `FINBRIEF_REPORT_OUT` | 리포트 이미지 출력 경로 |
 | `FINBRIEF_FONT` | 한글 리포트 렌더링용 폰트 경로 |
-| `LITELLM_MODEL` | 기본 LLM 모델 |
-| `LITELLM_FALLBACK_MODEL` | fallback LLM 모델 |
-| `FINBRIEF_BATCH_HOUR`, `FINBRIEF_BATCH_MINUTE` | 스케줄러 실행 시각 |
+| `SERVICE_PORT` | Docker Compose 노출 포트. 기본값 `8000` |
 
-## 로컬 실행
+### 로컬 실행
 
 Windows PowerShell 기준입니다.
 
@@ -115,19 +189,13 @@ Copy-Item .env.example .env
 python -m uvicorn app.main:app --reload
 ```
 
-확인:
-
-```powershell
-curl http://127.0.0.1:8000/api/v1/health
-```
-
-브라우저에서 확인할 수 있는 주소:
+확인 주소:
 
 - 웹 화면: `http://127.0.0.1:8000/`
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - Health check: `http://127.0.0.1:8000/api/v1/health`
 
-## API 사용 예시
+### 주요 API
 
 토픽 목록 조회:
 
@@ -149,12 +217,6 @@ curl -X POST http://127.0.0.1:8000/api/v1/topics/match `
 curl -X POST http://127.0.0.1:8000/api/v1/subscriptions/demo-user/topics `
   -H "Content-Type: application/json" `
   -d "{\"topic_id\":\"topic_btc\",\"channel\":\"discord\"}"
-```
-
-현재 구독 조회:
-
-```powershell
-curl http://127.0.0.1:8000/api/v1/subscriptions/demo-user
 ```
 
 선택 토픽 데이터 수집과 Supabase 적재:
@@ -185,32 +247,19 @@ curl "http://127.0.0.1:8000/api/v1/reports/today/explanation?run_date=2026-07-14
 curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=demo-user&run_date=2026-07-14"
 ```
 
-## Discord 챗봇 사용
+### Discord bot 실행
 
-Discord bot을 연결하면 `/finbrief` 명령 또는 봇 멘션/DM으로 토픽을 관리할 수 있습니다.
-
-대표 입력:
-
-```text
-/finbrief message: 나스닥 구독해줘
-/finbrief message: 내 토픽 보여줘
-/finbrief message: 비트코인 취소해줘
-/finbrief message: 금리 구독
-/finbrief message: 처음인데 뭐 받아보면 좋아?
-/finbrief message: 오늘 리포트에서 뭐 봐야 해?
-```
-
-로컬 실행:
+Discord Developer Portal에서 bot token, guild id, message content intent, `applications.commands` scope를 확인합니다.
 
 ```powershell
 python -m app.services.discord_bot
 ```
 
-Discord Developer Portal에서 bot token, guild id, message content intent, `applications.commands` scope를 확인합니다. Supabase 연결이 설정되어 있으면 구독 상태는 DB에 저장됩니다.
+Supabase 연결이 설정되어 있으면 구독 상태는 DB에 저장됩니다.
 
-## 배치 실행
+### 배치와 스케줄러
 
-전체시장 리포트와 구독 토픽 카드 생성을 한 번 실행합니다.
+전체 시장 리포트와 구독 토픽 카드 생성을 한 번 실행합니다.
 
 ```powershell
 python -m app.services.batch
@@ -230,12 +279,11 @@ FINBRIEF_BATCH_MINUTE=0
 FINBRIEF_RUN_ON_START=1
 ```
 
-## Docker 실행
+### Docker 실행
 
 Docker Desktop 또는 Docker Engine이 실행 중이어야 합니다.
 
 ```powershell
-Copy-Item .env.example .env
 docker compose up -d --build
 curl http://127.0.0.1:8000/api/v1/health
 docker compose ps
@@ -255,9 +303,7 @@ Compose에는 세 가지 서비스가 포함됩니다.
 | `finbrief-bot` | Discord 챗봇 실행 |
 | `finbrief-scheduler` | 매일 아침 배치 실행 |
 
-컨테이너 실행 전 `.env`에는 실데이터 운영값을 반드시 채워야 합니다.
-
-## CI/CD
+### CI/CD
 
 GitHub Actions는 테스트와 배포를 분리합니다.
 
@@ -266,43 +312,11 @@ GitHub Actions는 테스트와 배포를 분리합니다.
 | `FinBrief CI` | push, pull request, 수동 실행 | Python compile, pytest, Docker build |
 | `FinBrief CD` | main CI 성공 후 또는 수동 실행 | GHCR 이미지 빌드/푸시, GCE 배포, health check, rollback |
 
-GCE 배포를 사용하려면 GitHub repository secrets에 최소한 다음 값을 등록합니다.
+GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API, Discord, Langfuse, GCE SSH 정보를 등록해야 합니다.
 
-| Secret | 설명 |
-| --- | --- |
-| `GCE_HOST` | GCE VM 외부 IP 또는 도메인 |
-| `GCE_USERNAME` | SSH 접속 사용자 |
-| `GCE_SSH_KEY` | 배포용 private key |
-| `SERVICE_PORT` | 서비스 포트. 기본값 `8000` |
-| `ENABLE_MOCK_DATA` | `false` |
-| `FINBRIEF_LLM_STUB` | `0` |
-| `FINBRIEF_IMAGE_STUB` | `0` |
-| `DELIVERY_DRY_RUN` | `false` |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase 연결 |
-| `UPSTAGE_API_KEY`, `GEMINI_API_KEY` | LLM, embedding, 이미지 생성 |
-| `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS` | 외부 데이터 수집 |
-| `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID` | Discord bot 실행 |
-| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` | Langfuse 관측성 |
+수동 배포는 GitHub `Actions` -> `FinBrief CD` -> `Run workflow`에서 실행합니다.
 
-수동 배포는 GitHub `Actions` → `FinBrief CD` → `Run workflow`에서 실행합니다.
-
-## 기술 스택
-
-세부 구현보다 사용 흐름을 우선하지만, 프로젝트는 다음 기술을 사용합니다.
-
-| 영역 | 사용 기술 |
-| --- | --- |
-| Backend | Python 3.11, FastAPI |
-| Agent workflow | LangGraph |
-| LLM gateway | LiteLLM |
-| Observability | Langfuse |
-| Database/RAG | Supabase PostgreSQL, pgvector |
-| Data sources | FRED, yfinance, ECOS, RSS |
-| Image/report | Pillow, Gemini image model |
-| Bot/Delivery | Discord.py |
-| Infra | Docker, Docker Compose, GitHub Actions, GCE |
-
-## 프로젝트 구조
+### 프로젝트 구조
 
 ```text
 app/
@@ -318,7 +332,7 @@ tests/             자동 테스트
 .github/workflows/ CI/CD workflow
 ```
 
-## 검증
+### 검증
 
 개발 중 기본 검증:
 
@@ -335,7 +349,7 @@ curl http://127.0.0.1:8000/api/v1/health
 curl http://127.0.0.1:8000/api/v1/topics
 ```
 
-## 운영 원칙
+### 운영 원칙
 
 - 실제 secret은 `.env` 또는 GitHub Secrets에만 둡니다.
 - `.env`, private key, 생성 산출물은 Git에 커밋하지 않습니다.
