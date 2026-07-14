@@ -8,9 +8,10 @@ def test_fmt_value_pt_is_integer():
 
 
 def test_fmt_value_currency_two_decimals_trimmed():
-    # 통화/기타는 소수 2자리, 불필요한 0 제거
+    # 달러/USD 등은 소수 2자리(불필요한 0 제거), 원은 정수(한국 종목/환율)
     assert nodes._fmt_value(62780.3200001, "USD") == "62780.32"
-    assert nodes._fmt_value(1234.5, "원") == "1234.5"
+    assert nodes._fmt_value(203.53, "달러") == "203.53"
+    assert nodes._fmt_value(256500.0, "원") == "256500"
     assert nodes._fmt_value(1234.0, "달러") == "1234"
 
 

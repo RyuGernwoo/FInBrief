@@ -116,3 +116,42 @@ class UpstageEmbeddingProvider:
 
     def embed_query(self, topic: Topic) -> list[float]:
         return self.embed(build_topic_query_text(topic), embedding_kind="query")
+
+    def embed_passages(self, documents: list, *, batch_size: int = 64) -> list:
+        """여러 문서를 배치로 임베딩(문서 1건당 호출 1번 → 한 호출에 batch_size건).
+        아침 1회 임베딩에서 ~500 호출을 ~8 호출로 줄여 레이트리밋을 방지한다.
+        입력 순서와 정렬된 list 를 반환하며, 배치 실패분은 None."""
+        texts = [build_passage_text(d) for d in documents]
+        out: list = []
+        for i in range(0, len(texts), batch_size):
+            out.extend(self._embed_batch(texts[i:i + batch_size]))
+        return out
+
+    def _embed_batch(self, texts: list, *, attempts: int = 3) -> list:
+        if not texts:
+            return []
+        if self._settings.upstage_api_key is None:
+            raise RuntimeError("UPSTAGE_API_KEY is required for embeddings")
+
+        import time
+
+        import httpx
+
+        for attempt in range(attempts):
+            try:
+                response = httpx.post(
+                    UPSTAGE_EMBEDDINGS_URL,
+                    headers={
+                        "Authorization": f"Bearer {self._settings.upstage_api_key.get_secret_value()}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"model": EMBEDDING_PASSAGE_MODEL, "input": texts},
+                    timeout=60,
+                )
+                response.raise_for_status()
+                data = sorted(response.json()["data"], key=lambda item: item.get("index", 0))
+                return [validate_embedding(item["embedding"]) for item in data]
+            except Exception:
+                if attempt < attempts - 1:
+                    time.sleep(1.0 * (attempt + 1))
+        return [None] * len(texts)   # 배치 최종 실패 → 다음 실행에서 재시도(백필)

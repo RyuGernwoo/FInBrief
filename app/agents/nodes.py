@@ -99,23 +99,27 @@ def ingest_news(state: BriefState) -> dict[str, Any]:
             return {}
 
         id_by_url = _news_id_by_url(ingestion.upsert_news_documents(documents))
-        # 이미 임베딩된 문서는 스킵(재임베딩 버스트→레이트리밋 방지). 미임베딩은 다음 실행에
-        # 재시도되어 자연 백필된다. 조회 미지원(테스트 mock)이면 전체 대상.
+        # 이미 임베딩된 문서는 스킵(중복 재임베딩 방지). 미임베딩은 다음 실행에 다시 대상이 됨.
         all_ids = [i for i in (id_by_url.get(str(d.url)) for d in documents) if i]
         already = (ingestion.existing_passage_news_ids(all_ids)
                    if hasattr(ingestion, "existing_passage_news_ids") else set())
+        targets = [d for d in documents
+                   if id_by_url.get(str(d.url)) and id_by_url.get(str(d.url)) not in already]
+
+        # 배치 임베딩: 문서 1건당 호출 1번(→레이트리밋) 대신 한 호출에 다건.
+        if hasattr(provider, "embed_passages"):
+            embeddings = provider.embed_passages(targets)
+        else:   # 폴백(mock 등): 단건 재시도
+            embeddings = [_embed_passage_with_retry(provider, d) for d in targets]
+
         rows: list[dict[str, Any]] = []
         failed = 0
-        for document in documents:
-            news_id = id_by_url.get(str(document.url))
-            if news_id is None or news_id in already:
-                continue
-            embedding = _embed_passage_with_retry(provider, document)
+        for document, embedding in zip(targets, embeddings):
             if embedding is None:
                 failed += 1
                 continue
             rows.append({
-                "news_id": news_id,
+                "news_id": id_by_url[str(document.url)],
                 "embedding": embedding,
                 "embedding_model": EMBEDDING_PASSAGE_MODEL,
                 "embedding_kind": "passage",
@@ -504,7 +508,13 @@ def _clip_body(s, n: int) -> str:
             end = p + len(m)
             if end >= n * 0.6 and end > best:
                 best = end
-    return cut[:best].rstrip() if best else cut[: n - 1].rstrip() + "…"
+    if best:
+        return cut[:best].rstrip()
+    # 문장 경계가 없으면 마지막 공백(단어 경계)에서 끊어 단어 중간 잘림 방지.
+    sp = cut.rfind(" ")
+    if sp >= n * 0.5:
+        return cut[:sp].rstrip() + "…"
+    return cut[: n - 1].rstrip() + "…"
 
 
 def _display_unit(topic: dict, data: dict) -> str:
@@ -535,10 +545,10 @@ def _fmt_num(value: Any, decimals: int) -> str:
 
 
 def _fmt_value(value: Any, unit: str) -> str:
-    """지표 현재값 포맷: pt(지수)는 정수, 그 외(통화 등)는 소수 2자리."""
+    """지표 현재값 포맷: pt(지수)·원(한국 종목/환율)은 정수, 그 외(달러 등)는 소수 2자리."""
     if value is None:
         return ""
-    decimals = 0 if str(unit or "").strip() == "pt" else 2
+    decimals = 0 if str(unit or "").strip() in ("pt", "원") else 2
     return _fmt_num(value, decimals)
 
 
