@@ -65,7 +65,7 @@ services:
         required: false
     environment:
       APP_ENV: ${APP_ENV:-prod}
-      FINBRIEF_BATCH_HOUR: ${FINBRIEF_BATCH_HOUR:-7}
+      FINBRIEF_BATCH_HOUR: ${FINBRIEF_BATCH_HOUR:-8}
     command: ["python", "-m", "app.services.scheduler"]
     healthcheck:
       disable: true
