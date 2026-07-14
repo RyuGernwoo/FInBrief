@@ -388,11 +388,19 @@ def load_cached_cards(state: BriefState) -> dict[str, Any]:
     run_date = _parse_run_date(state["run_date"])
     cached_cards: list[dict[str, Any]] = []
     topics_to_generate: list[dict[str, Any]] = []
+    # 이미지 발송 모드인데 캐시 카드의 이미지가 로컬 임시경로라 현재 컨테이너에 없으면
+    # 텍스트로 폴백되므로, 그 경우 캐시를 버리고 재생성한다.
+    want_image = image_gen.image_enabled()
 
     for topic in topics:
         cached = repos.cards.get(topic["topic_id"], run_date)
         if cached is None:
             topics_to_generate.append(topic)
+            continue
+        img = str(cached.image_url or "")
+        img_ok = img.startswith("http") or (bool(img) and os.path.exists(img))
+        if want_image and not img_ok:
+            topics_to_generate.append(topic)   # 이미지 원하는데 캐시 이미지 유실 → 재생성
         else:
             cached_cards.append(_card_from_artifact(cached.model_copy(update={"cached": True})))
 

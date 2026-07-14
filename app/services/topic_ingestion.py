@@ -20,7 +20,7 @@ class TopicIngestionOptions(BaseModel):
     include_news: bool = True
     include_embeddings: bool = True
     dry_run: bool = False
-    since_days: int = Field(default=rag.RAG_SINCE_DAYS, ge=1)
+    since_days: int = Field(default=rag.RAG_SINCE_DAYS, ge=0)   # 0=당일만
 
 
 class TopicIngestionResult(BaseModel):
