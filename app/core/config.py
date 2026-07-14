@@ -65,6 +65,10 @@ class Settings(BaseSettings):
             "강력 추천",
             "손실 없음",
             "보장 수익",
+            "수익 보장",
+            "원금 보장",
+            "무조건 매수",
+            "무조건 매도",
         ]
     )
     finbrief_llm_pii_masking: bool = True
