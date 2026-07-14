@@ -7,7 +7,7 @@ They are intentionally small and map directly to the final planning documents.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -147,6 +147,17 @@ class FullReport(StrictModel):
     disclaimer: str = Field(default="본 브리핑은 투자 조언이 아닌 참고용 정보입니다.")
 
 
+class EvaluationResult(StrictModel):
+    eval_name: str = Field(min_length=1)
+    score: float | None = Field(default=None, ge=0.0, le=1.0)
+    passed: bool
+    result: dict[str, Any] = Field(default_factory=dict)
+    run_id: str | None = None
+    run_date: date | None = None
+    trace_id: str | None = None
+    topic_id: str | None = None
+
+
 class BatchRunResult(StrictModel):
     run_id: str = Field(min_length=1)
     run_date: date
@@ -154,6 +165,7 @@ class BatchRunResult(StrictModel):
     report: FullReport | None = None
     generated_cards: list[CardArtifact] = Field(default_factory=list)
     delivery_results: list[DeliveryLog] = Field(default_factory=list)
+    eval_results: list[EvaluationResult] = Field(default_factory=list)
     trace_id: str | None = None
     errors: list[str] = Field(default_factory=list)
 

@@ -323,22 +323,39 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
     indicator_index = _indicators_index(state.get("indicators", []))
     enriched: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for graph_topic in topics:
-        item = dict(graph_topic)
-        try:
-            topic_model = repos.topics.get(graph_topic["topic_id"])
-            # 후보는 넓게(RAG_CANDIDATES), 최종은 postprocess 가 RAG_K 로 컷(threshold·다양성·top-k).
-            evidence = rag.postprocess_evidence(
-                repos.news.match(topic_model, since, rag.RAG_CANDIDATES),
-                k=rag.RAG_K,
-            )
-            item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
-        except Exception as exc:
-            item["evidence"] = []
-            errors.append({"code": "RAG_FAILED", "message": str(exc),
-                           "node": "retrieve_evidence", "topic": graph_topic.get("topic_id")})
-        item["indicator"] = indicator_index.get(graph_topic["topic_id"], {})
-        enriched.append(item)
+    with observability.span(
+        "finbrief.rag.retrieve_evidence",
+        metadata={
+            "run_id": state.get("run_id"),
+            "trace_id": state.get("trace_id"),
+            "topic_count": len(topics),
+            "rag_candidates": rag.RAG_CANDIDATES,
+            "rag_k": rag.RAG_K,
+        },
+    ) as span:
+        for graph_topic in topics:
+            item = dict(graph_topic)
+            try:
+                topic_model = repos.topics.get(graph_topic["topic_id"])
+                # 후보는 넓게(RAG_CANDIDATES), 최종은 postprocess 가 RAG_K 로 컷(threshold·다양성·top-k).
+                evidence = rag.postprocess_evidence(
+                    repos.news.match(topic_model, since, rag.RAG_CANDIDATES),
+                    k=rag.RAG_K,
+                )
+                item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
+            except Exception as exc:
+                item["evidence"] = []
+                errors.append({"code": "RAG_FAILED", "message": str(exc),
+                               "node": "retrieve_evidence", "topic": graph_topic.get("topic_id")})
+            item["indicator"] = indicator_index.get(graph_topic["topic_id"], {})
+            enriched.append(item)
+        span.update(
+            output={
+                "enriched_topics": len(enriched),
+                "evidence_count": sum(len(item.get("evidence", [])) for item in enriched),
+                "error_count": len(errors),
+            }
+        )
 
     result: dict[str, Any] = {"topics_to_generate": enriched}
     if errors:
@@ -889,4 +906,19 @@ def deliver(state: BriefState) -> dict[str, Any]:
                 "error_code": res.get("error"),
             })
 
+    with observability.span(
+        "finbrief.delivery.dispatch",
+        metadata={
+            "run_id": state.get("run_id"),
+            "trace_id": state.get("trace_id"),
+            "subscription_count": len(subscriptions),
+            "deliver_report": want_report,
+            "deliver_cards": want_cards,
+        },
+    ) as span:
+        status_counts: dict[str, int] = {}
+        for item in deliveries:
+            status = str(item.get("status", "unknown"))
+            status_counts[status] = status_counts.get(status, 0) + 1
+        span.update(output={"delivery_count": len(deliveries), "status_counts": status_counts})
     return {"deliveries": deliveries}

@@ -15,6 +15,8 @@ from app.api.dependencies import (
     get_repository_bundle,
 )
 from app.core.schemas import BatchRunResult
+from app.core.evaluations import eval_summary
+from app.core.config import Settings, get_settings
 from app.repositories.protocols import RepositoryBundle
 from app.services.report_explainer import build_report_explanation
 from app.services.topic_ingestion import TopicIngestionOptions, TopicIngestionResult, ingest_topics
@@ -48,6 +50,7 @@ def _summary(
         "report_url": result.report.report_url if result.report else None,
         "disclaimer": result.report.disclaimer if result.report else DISCLAIMER,
         "errors": result.errors,
+        "eval_summary": eval_summary(result.eval_results),
     }
     if ingestion is not None:
         payload["ingestion"] = ingestion.model_dump(mode="json")
@@ -90,6 +93,7 @@ def _refresh_active_topics(
 @router.post("/reports/run")
 def run_report(
     request: ReportRunRequest,
+    settings: Settings = Depends(get_settings),
     repos: RepositoryBundle = Depends(get_repository_bundle),
     ingestion: Any | None = Depends(get_ingestion_repository),
     embedding_provider: Any | None = Depends(get_embedding_provider),
@@ -108,6 +112,7 @@ def run_report(
         repos,
         run_date=run_date,
         dry_run=request.dry_run,
+        settings=settings,
     )
     return _summary(result, ingestion=ingestion_result)
 
