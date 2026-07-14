@@ -1,6 +1,10 @@
 from app.repositories.memory import create_memory_repositories
 from app.services import chatbot
-from app.services.chatbot_responses import format_help_reply, format_investment_advice_reply
+from app.services.chatbot_responses import (
+    format_add_success,
+    format_help_reply,
+    format_investment_advice_reply,
+)
 from app.services.chatbot_suggestions import suggest_topics
 from app.services.subscription_service import SubscriptionService
 
@@ -13,15 +17,27 @@ def test_help_reply_introduces_persona_and_examples():
     reply = format_help_reply()
 
     assert "브리핑 메이트" in reply
+    assert "!" in reply
+    assert "✨" in reply or "🚀" in reply
     assert "나스닥 구독" in reply
     assert "내 토픽" in reply
     assert "비트코인 취소" in reply
 
 
+def test_add_success_reply_uses_lively_persona():
+    reply = format_add_success("나스닥", 2, 5)
+
+    assert "🎉" in reply
+    assert "나스닥" in reply
+    assert "2/5" in reply
+    assert "!" in reply
+
+
 def test_investment_advice_reply_refuses_and_redirects_to_subscription():
     reply = format_investment_advice_reply()
 
-    assert "대신해드릴 수 없습니다" in reply
+    assert "대신해드릴 수 없" in reply
+    assert "⚠️" in reply
     assert "비트코인 구독" in reply
     assert "목표가" not in reply
 

@@ -171,6 +171,7 @@ class AdminCommandResponse(StrictModel):
         "tier_status",
         "help",
         "recommend_topics",
+        "explain_report",
         "clarify_topic",
         "unknown",
     ]

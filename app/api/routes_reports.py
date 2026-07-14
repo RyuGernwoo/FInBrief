@@ -16,6 +16,7 @@ from app.api.dependencies import (
 )
 from app.core.schemas import BatchRunResult
 from app.repositories.protocols import RepositoryBundle
+from app.services.report_explainer import build_report_explanation
 from app.services.topic_ingestion import TopicIngestionOptions, TopicIngestionResult, ingest_topics
 
 
@@ -122,3 +123,18 @@ def get_today_report(
             detail={"code": "REPORT_NOT_FOUND", "message": "No report has been generated."},
         )
     return _summary(result)
+
+
+@router.get("/reports/today/explanation")
+def get_today_report_explanation(
+    run_date: date | None = Query(default=None),
+    max_focus: int = Query(default=3, ge=1, le=5),
+    repos: RepositoryBundle = Depends(get_repository_bundle),
+) -> dict[str, object]:
+    result = get_latest_result(run_date)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "REPORT_NOT_FOUND", "message": "No report has been generated."},
+        )
+    return build_report_explanation(result, repos=repos, max_focus=max_focus)

@@ -60,22 +60,31 @@ def test_recommend_topics_fallback_without_llm(monkeypatch):
 
 
 def test_list_topics_extended(monkeypatch):
-    """목록 조회 = 현재 구독 + 총 개수(구독 가능) + 추천."""
-    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")   # 추천은 폴백(대표 토픽)
+    """목록 조회 = 현재 구독 표 + 전체 구독 가능 토픽 표."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
     s = _svc()
-    topic = s.catalog()[0]
+    catalog = s.catalog()
+    topic = catalog[0]
+    nasdaq = next(t for t in catalog if t.normalized_name == "nasdaq")
     s.add("discord", "u1", topic.topic_id, "123")
+    s.add("discord", "u1", nasdaq.topic_id, "123")
     r = chatbot.handle(s, "discord", "u1", "내 토픽 목록")
     assert r["intent"] == "list_topics" and r["status"] == "completed"
     assert topic.name in r["reply"]          # 현재 구독 표시
+    assert nasdaq.name in r["reply"]
     assert "총" in r["reply"]                 # 전체 개수(요약)
     assert "구독 가능" in r["reply"]
+    assert "| 번호 | 현재 구독 토픽 | 유형 |" in r["reply"]
+    assert "| 유형 | 구독 가능 토픽 |" in r["reply"]
+    assert "💡" not in r["reply"]
+    assert "추천" not in r["reply"]
 
 
 def test_welcome_text_has_examples():
     """온보딩 문구에 사용 예시가 포함."""
     w = chatbot.welcome_text(_svc())
-    assert "구독" in w and "멘션" in w and "총" in w
+    assert "브리핑 메이트" in w and "구독" in w and "멘션" in w and "총" in w
+    assert "!" in w and ("🚀" in w or "✨" in w)
 
 
 def test_add_topic_ambiguous_recommends(monkeypatch):
@@ -84,6 +93,50 @@ def test_add_topic_ambiguous_recommends(monkeypatch):
     r = chatbot.handle(_svc(), "discord", "u9", "뭔가 구독하고 싶어")
     assert r["intent"] == "add_topic" and r["status"] == "blocked"
     assert "토픽" in r["reply"]
+
+
+def test_add_topic_accepts_unique_aliases_and_normalized_names(monkeypatch):
+    """카탈로그에 있는 영문 alias/normalized_name도 바로 구독된다."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    cases = [
+        ("btc 구독", "topic_btc"),
+        ("nasdaq 구독", "topic_nasdaq"),
+        ("S&P500 구독", "topic_sp500"),
+        ("USD/KRW 구독", "topic_usdkrw"),
+        ("fed funds 구독", "topic_fed_funds"),
+    ]
+
+    for message, expected_topic_id in cases:
+        s = _svc()
+        r = chatbot.handle(s, "discord", f"alias_{expected_topic_id}", message, "c")
+        assert r["intent"] == "add_topic"
+        assert r["status"] == "completed"
+        assert r["topic"] == expected_topic_id
+
+
+def test_add_topic_keeps_ambiguous_alias_as_clarification(monkeypatch):
+    """여러 후보가 같은 강도로 맞는 표현은 자동 구독하지 않는다."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    r = chatbot.handle(_svc(), "discord", "ambiguous_alias", "달러 환율 구독", "c")
+
+    assert r["intent"] == "clarify_topic"
+    assert r["status"] == "blocked"
+    assert "후보" in r["reply"]
+
+
+def test_llm_intent_accepts_normalized_topic_name(monkeypatch):
+    """LLM이 표시명 대신 normalized_name을 반환해도 카탈로그 topic_id로 매핑한다."""
+    import app.core.llm as core_llm
+
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test")
+    monkeypatch.delenv("FINBRIEF_LLM_STUB", raising=False)
+    monkeypatch.setattr(core_llm, "chat_json", lambda sys, msg: {"intent": "add_topic", "topic": "btc"})
+
+    r = chatbot.handle(_svc(), "discord", "llm_alias", "비트코인 구독하고 싶어", "c")
+
+    assert r["intent"] == "add_topic"
+    assert r["status"] == "completed"
+    assert r["topic"] == "topic_btc"
 
 
 def test_delete_ambiguous_resolves_to_subscription(monkeypatch):
@@ -105,3 +158,17 @@ def test_delete_not_subscribed_blocked(monkeypatch):
     r = chatbot.handle(s, "discord", "del_u2", "비트코인 제거", "c")
     assert r["intent"] == "delete_topic" and r["status"] == "blocked"
     assert "구독 목록에 없" in r["reply"]
+
+
+def test_explain_report_without_generated_report_guides_user(monkeypatch):
+    """리포트 설명 요청인데 오늘 리포트가 없으면 생성 안내."""
+    from app.agents.pipeline import reset_latest_results
+
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    reset_latest_results()
+    r = chatbot.handle(_svc(), "discord", "explain_u1", "오늘 리포트에서 뭐 봐야 해?")
+
+    assert r["intent"] == "explain_report"
+    assert r["status"] == "blocked"
+    assert "리포트" in r["reply"]
+    assert "생성" in r["reply"]

@@ -6,14 +6,16 @@ import json
 import re
 
 from app.core import llm
+from app.agents.pipeline import get_latest_result
 from app.services import chatbot_responses as replies
 from app.services.chatbot_persona import is_investment_advice_request
-from app.services.chatbot_suggestions import suggest_topics, starter_topics
+from app.services.chatbot_suggestions import resolve_topic_id, suggest_topics, starter_topics
+from app.services.report_explainer import build_report_explanation
 from app.services.subscription_service import SubscriptionService, TopicNotAllowed, MaxTopicsExceeded
 
 INTENT_SYSTEM = (
     "너는 금융 카드뉴스 구독 관리 봇의 의도 분류기다. 사용자 메시지를 아래 JSON으로만 답한다. "
-    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|unknown", '
+    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|explain_report|unknown", '
     '"topic": "<카탈로그 토픽명 또는 null>"}'
     " topic은 반드시 주어진 카탈로그 중 하나로 매핑하고, 없으면 null."
 )
@@ -37,6 +39,55 @@ def _category_summary(catalog: list, per: int = 3) -> str:
     keys = [k for k in _TYPE_ORDER if k in buckets] + [k for k in buckets if k not in _TYPE_ORDER]
     parts = [f"{_TYPE_LABEL.get(k, k)}: {', '.join(buckets[k][:per])}" for k in keys]
     return " / ".join(parts) + f" … (총 {len(catalog)}개)"
+
+
+def _table_cell(value: object) -> str:
+    return str(value).replace("|", "/").replace("\n", " ").strip()
+
+
+def _type_label(topic_type: object) -> str:
+    return _TYPE_LABEL.get(str(topic_type), str(topic_type or "-"))
+
+
+def _subscription_table(current: list, catalog: list) -> str:
+    topics_by_id = {t.topic_id: t for t in catalog}
+    rows = ["| 번호 | 현재 구독 토픽 | 유형 |", "| ---: | --- | --- |"]
+    if not current:
+        rows.append("| - | 없음 | - |")
+        return "\n".join(rows)
+
+    for index, subscription in enumerate(current, start=1):
+        topic = topics_by_id.get(subscription.topic_id)
+        name = topic.name if topic else subscription.topic_id
+        topic_type = topic.type if topic else "-"
+        rows.append(f"| {index} | {_table_cell(name)} | {_table_cell(_type_label(topic_type))} |")
+    return "\n".join(rows)
+
+
+def _catalog_table(catalog: list) -> str:
+    from collections import defaultdict
+
+    buckets: dict = defaultdict(list)
+    for topic in catalog:
+        buckets[str(getattr(topic, "type", "기타"))].append(topic.name)
+    keys = [key for key in _TYPE_ORDER if key in buckets] + [
+        key for key in buckets if key not in _TYPE_ORDER
+    ]
+
+    rows = ["| 유형 | 구독 가능 토픽 |", "| --- | --- |"]
+    for key in keys:
+        names = ", ".join(_table_cell(name) for name in buckets[key])
+        rows.append(f"| {_table_cell(_type_label(key))} | {names} |")
+    return "\n".join(rows)
+
+
+def _format_list_topics_reply(current: list, catalog: list, tier: dict) -> str:
+    return (
+        f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']})\n"
+        f"{_subscription_table(current, catalog)}\n\n"
+        f"🗂️ **전체 구독 가능 토픽** (총 {len(catalog)}개)\n"
+        f"{_catalog_table(catalog)}"
+    )
 
 
 def recommend_topics(message: str, catalog: list, k: int = 5) -> list[str]:
@@ -72,11 +123,11 @@ def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
 def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
-    return ("👋 **FinBrief** 구독 봇이에요! 관심 지표를 고르면 매일 아침 카드뉴스로 브리핑해드려요.\n"
-            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 돼요)\n"
+    return ("👋 **브리핑 메이트**가 도착했어요! 관심 지표를 고르면 매일 아침 7시에 카드뉴스로 신나게 챙겨드릴게요 🚀\n"
+            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 좋아요!)\n"
             "• 조회:  `내 토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n"
             f"• 구독 가능(예시): {cats}\n"
-            "관심사만 편하게 말해도 알맞은 토픽을 추천해드려요. 예) `반도체랑 AI 소식 받고 싶어`")
+            "관심사만 편하게 던져주세요! 예) `반도체랑 AI 소식 받고 싶어` ✨")
 
 
 def _message_tokens(message: str) -> set[str]:
@@ -100,8 +151,11 @@ def _should_clarify_selected_topic(
     names: dict,
     topic_id: str | None,
     suggestions: list,
+    catalog: list | None = None,
 ) -> bool:
     if not topic_id or len(suggestions) <= 1:
+        return False
+    if catalog is not None and resolve_topic_id(message, catalog) == topic_id:
         return False
     topic_name = names.get(topic_id)
     if not topic_name:
@@ -111,9 +165,10 @@ def _should_clarify_selected_topic(
     return True
 
 
-def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
+def _rule_intent(message: str, catalog: list) -> tuple[str, str | None]:
     m = message.lower()
-    topic = next(
+    names = {t.topic_id: t.name for t in catalog}
+    topic = resolve_topic_id(message, catalog) or next(
         (tid for tid, nm in names.items() if _topic_matches(message, m, tid, nm)),
         None,
     )
@@ -121,6 +176,12 @@ def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
         return "help", None
     if any(k in message for k in ("추천", "뭐 받아", "인기", "처음")):
         return "recommend_topics", None
+    if (
+        any(k in message for k in ("리포트", "시장 설명", "지표 설명", "변동 큰", "집중해서"))
+        or "report" in m
+        or all(k in message for k in ("오늘", "뭐", "봐야"))
+    ):
+        return "explain_report", None
     if any(k in message for k in ("추가", "구독", "등록")) or "add" in m:
         return "add_topic", topic
     if any(k in message for k in ("삭제", "제거", "취소", "해지", "빼", "지워")) or any(k in m for k in ("remove", "delete")):
@@ -141,11 +202,11 @@ def parse_intent(message: str, catalog: list) -> tuple[str, str | None]:
             intent = raw.get("intent", "unknown")
             topic = raw.get("topic")
             if topic and topic not in names:
-                topic = next((tid for tid, nm in names.items() if nm == topic), None)
+                topic = resolve_topic_id(str(topic), catalog) or next((tid for tid, nm in names.items() if nm == topic), None)
             return intent, topic
         except Exception:
             pass
-    return _rule_intent(message, names)
+    return _rule_intent(message, catalog)
 
 
 def _resp(intent, status, reply, topic=None):
@@ -167,30 +228,38 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         return _resp(intent, "completed", replies.format_help_reply())
     if intent == "recommend_topics":
         return _resp(intent, "completed", replies.format_recommend_topics(starter_topics(catalog, limit=5)))
+    if intent == "explain_report":
+        result = get_latest_result()
+        if result is None:
+            return _resp(intent, "blocked", replies.format_report_not_generated_reply())
+        try:
+            payload = build_report_explanation(result, repos=service.repos, max_focus=3)
+            return _resp(intent, "completed", str(payload["reply"]))
+        except Exception:
+            return _resp(intent, "blocked", replies.format_report_not_generated_reply())
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)
-        subscribed_names = [names.get(s.topic_id, s.topic_id) for s in cur]
-        subscribed = ", ".join(subscribed_names) or "없음"
         tier = service.tier(channel, ext_user_id)
-        reco = recommend_from_subs(cur, catalog)
-        reply = (f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']}): {subscribed}\n"
-                 f"🗂️ **구독 가능**(총 {len(catalog)}개): {cats}")
-        if reco:
-            reply += f"\n💡 이런 토픽도 관심 있으실 것 같아요: {', '.join(reco)}"
-        return _resp(intent, "completed", reply)
+        return _resp(intent, "completed", _format_list_topics_reply(cur, catalog, tier))
     if intent == "tier_status":
         t = service.tier(channel, ext_user_id)
         return _resp(intent, "completed", replies.format_tier_status(t["tier"], t["used"], t["max_topics"]))
     if intent == "add_topic":
-        if _should_clarify_selected_topic(message, names, topic, suggestions):
+        if _should_clarify_selected_topic(message, names, topic, suggestions, catalog):
             return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
+        if not topic:
+            if suggestions:
+                if len(suggestions) == 1:
+                    topic = suggestions[0].topic_id
+                else:
+                    return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
         if not topic:
             if suggestions:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
             reco = recommend_topics(message, catalog)
-            hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)}" if reco else f" 가능(예시): {cats}"
-            return _resp(intent, "blocked", f"어떤 토픽을 구독할까요?{hint}")
+            hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)} ✨" if reco else f" 가능 예시: {cats}"
+            return _resp(intent, "blocked", f"🤔 어떤 토픽을 구독할까요?{hint}")
         try:
             cur = service.add(channel, ext_user_id, topic, channel_id)
             tier = service.tier(channel, ext_user_id)
@@ -226,7 +295,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
             return _resp(intent, "blocked", replies.format_delete_needs_topic())
         subscribed = ", ".join(names.get(t, t) for t in sub_ids) or "없음"
         return _resp(intent, "blocked",
-                     f"'{names.get(topic, topic)}'는 현재 구독 목록에 없어요. 현재 구독: {subscribed}")
+                     f"앗, '{names.get(topic, topic)}'는 현재 구독 목록에 없어요!\n현재 구독: {subscribed}")
 
     reco = recommend_topics(message, catalog)
     reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"

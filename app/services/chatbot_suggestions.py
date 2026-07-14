@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from app.core.schemas import Topic
 from app.services.chatbot_persona import STARTER_TOPIC_IDS
@@ -42,6 +43,19 @@ def _tokens(query: str) -> list[str]:
     return [token.strip() for token in cleaned.split() if len(token.strip()) >= 2]
 
 
+def _clean_action_words(query: str) -> str:
+    cleaned = str(query).casefold()
+    for word in ACTION_WORDS:
+        cleaned = cleaned.replace(word, " ")
+    return cleaned.strip()
+
+
+def _canonical(value: str) -> str:
+    """Normalize aliases such as S&P500, USD/KRW, fed_funds, fed funds."""
+
+    return re.sub(r"[^0-9a-z가-힣]+", "", str(value).casefold())
+
+
 def _topic_terms(topic: Topic) -> list[str]:
     terms = [topic.topic_id, topic.name, topic.normalized_name]
     for mapping in topic.source_mapping:
@@ -56,6 +70,29 @@ def _topic_terms(topic: Topic) -> list[str]:
             seen.add(normalized)
             unique.append(normalized)
     return unique
+
+
+def resolve_topic_id(query: str, catalog: list[Topic]) -> str | None:
+    """Resolve high-confidence topic aliases to a single topic id.
+
+    Exact canonical matching handles display names, normalized names, source
+    queries, and news keywords. If no exact hit exists, a unique suggestion is
+    safe to auto-select; multiple suggestions remain a clarification case.
+    """
+
+    query_key = _canonical(_clean_action_words(query))
+    if len(query_key) >= 2:
+        exact: list[Topic] = []
+        for topic in catalog:
+            if any(_canonical(term) == query_key for term in _topic_terms(topic)):
+                exact.append(topic)
+        if len(exact) == 1:
+            return exact[0].topic_id
+
+    suggestions = suggest_topics(query, catalog, limit=2)
+    if len(suggestions) == 1:
+        return suggestions[0].topic_id
+    return None
 
 
 def _term_matches_token(term_text: str, token: str) -> bool:
