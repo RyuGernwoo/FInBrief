@@ -199,6 +199,7 @@ jobs:
           LANGFUSE_OTEL_HOST: ${{ secrets.LANGFUSE_OTEL_HOST }}
           LANGFUSE_CAPTURE_IO: ${{ secrets.LANGFUSE_CAPTURE_IO }}
           LANGFUSE_FLUSH_ON_SHUTDOWN: ${{ secrets.LANGFUSE_FLUSH_ON_SHUTDOWN }}
+          FINBRIEF_TRACE_SALT: ${{ secrets.FINBRIEF_TRACE_SALT }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
           NEWS_RSS_URLS: ${{ secrets.NEWS_RSS_URLS }}
@@ -222,11 +223,12 @@ jobs:
           langfuse_otel_host="${LANGFUSE_OTEL_HOST:-$langfuse_base_url}"
           langfuse_capture_io="${LANGFUSE_CAPTURE_IO:-true}"
           langfuse_flush_on_shutdown="${LANGFUSE_FLUSH_ON_SHUTDOWN:-false}"
+          finbrief_trace_salt="${FINBRIEF_TRACE_SALT:-}"
           deploy_dir="/home/${GCE_USERNAME}/finbrief"
           ssh_target="${GCE_USERNAME}@${GCE_HOST}"
 
           ssh -i "$HOME/.ssh/finbrief" "$ssh_target" \
-            "DEPLOY_DIR='$deploy_dir' DEPLOY_IMAGE='$DEPLOY_IMAGE' DEPLOY_MODE='$DEPLOY_MODE' GHCR_TOKEN_B64='$(b64 "$GHCR_TOKEN")' GHCR_USERNAME='$GHCR_USERNAME' REGISTRY='$REGISTRY' SERVICE_PORT='$service_port' ENABLE_MOCK_DATA_B64='$(b64 "$enable_mock_data")' FINBRIEF_LLM_STUB_B64='$(b64 "$llm_stub")' FINBRIEF_IMAGE_STUB_B64='$(b64 "$image_stub")' DELIVERY_DRY_RUN_B64='$(b64 "$delivery_dry_run")' SUPABASE_URL_B64='$(b64 "$SUPABASE_URL")' SUPABASE_ANON_KEY_B64='$(b64 "$SUPABASE_ANON_KEY")' SUPABASE_SERVICE_ROLE_KEY_B64='$(b64 "$SUPABASE_SERVICE_ROLE_KEY")' SUPABASE_DB_SCHEMA_B64='$(b64 "${SUPABASE_DB_SCHEMA:-public}")' LITELLM_MODEL_B64='$(b64 "${LITELLM_MODEL:-upstage/solar-pro}")' LITELLM_FALLBACK_MODEL_B64='$(b64 "$LITELLM_FALLBACK_MODEL")' UPSTAGE_API_KEY_B64='$(b64 "$UPSTAGE_API_KEY")' GEMINI_API_KEY_B64='$(b64 "$GEMINI_API_KEY")' FINBRIEF_IMAGE_MODEL_B64='$(b64 "${FINBRIEF_IMAGE_MODEL:-gemini-3.1-flash-lite-image}")' FINBRIEF_FONT_B64='$(b64 "$FINBRIEF_FONT")' FINBRIEF_REPORT_OUT_B64='$(b64 "$report_out")' LANGFUSE_ENABLED_B64='$(b64 "${LANGFUSE_ENABLED:-false}")' LANGFUSE_PUBLIC_KEY_B64='$(b64 "$LANGFUSE_PUBLIC_KEY")' LANGFUSE_SECRET_KEY_B64='$(b64 "$LANGFUSE_SECRET_KEY")' LANGFUSE_HOST_B64='$(b64 "$langfuse_host")' LANGFUSE_BASE_URL_B64='$(b64 "$langfuse_base_url")' LANGFUSE_OTEL_HOST_B64='$(b64 "$langfuse_otel_host")' LANGFUSE_CAPTURE_IO_B64='$(b64 "$langfuse_capture_io")' LANGFUSE_FLUSH_ON_SHUTDOWN_B64='$(b64 "$langfuse_flush_on_shutdown")' FRED_API_KEY_B64='$(b64 "$FRED_API_KEY")' ECOS_API_KEY_B64='$(b64 "$ECOS_API_KEY")' NEWS_RSS_URLS_B64='$(b64 "$NEWS_RSS_URLS")' DISCORD_BOT_TOKEN_B64='$(b64 "$DISCORD_BOT_TOKEN")' DISCORD_GUILD_ID_B64='$(b64 "$DISCORD_GUILD_ID")' bash -s" <<'REMOTE'
+            "DEPLOY_DIR='$deploy_dir' DEPLOY_IMAGE='$DEPLOY_IMAGE' DEPLOY_MODE='$DEPLOY_MODE' GHCR_TOKEN_B64='$(b64 "$GHCR_TOKEN")' GHCR_USERNAME='$GHCR_USERNAME' REGISTRY='$REGISTRY' SERVICE_PORT='$service_port' ENABLE_MOCK_DATA_B64='$(b64 "$enable_mock_data")' FINBRIEF_LLM_STUB_B64='$(b64 "$llm_stub")' FINBRIEF_IMAGE_STUB_B64='$(b64 "$image_stub")' DELIVERY_DRY_RUN_B64='$(b64 "$delivery_dry_run")' SUPABASE_URL_B64='$(b64 "$SUPABASE_URL")' SUPABASE_ANON_KEY_B64='$(b64 "$SUPABASE_ANON_KEY")' SUPABASE_SERVICE_ROLE_KEY_B64='$(b64 "$SUPABASE_SERVICE_ROLE_KEY")' SUPABASE_DB_SCHEMA_B64='$(b64 "${SUPABASE_DB_SCHEMA:-public}")' LITELLM_MODEL_B64='$(b64 "${LITELLM_MODEL:-upstage/solar-pro}")' LITELLM_FALLBACK_MODEL_B64='$(b64 "$LITELLM_FALLBACK_MODEL")' UPSTAGE_API_KEY_B64='$(b64 "$UPSTAGE_API_KEY")' GEMINI_API_KEY_B64='$(b64 "$GEMINI_API_KEY")' FINBRIEF_IMAGE_MODEL_B64='$(b64 "${FINBRIEF_IMAGE_MODEL:-gemini-3.1-flash-lite-image}")' FINBRIEF_FONT_B64='$(b64 "$FINBRIEF_FONT")' FINBRIEF_REPORT_OUT_B64='$(b64 "$report_out")' LANGFUSE_ENABLED_B64='$(b64 "${LANGFUSE_ENABLED:-false}")' LANGFUSE_PUBLIC_KEY_B64='$(b64 "$LANGFUSE_PUBLIC_KEY")' LANGFUSE_SECRET_KEY_B64='$(b64 "$LANGFUSE_SECRET_KEY")' LANGFUSE_HOST_B64='$(b64 "$langfuse_host")' LANGFUSE_BASE_URL_B64='$(b64 "$langfuse_base_url")' LANGFUSE_OTEL_HOST_B64='$(b64 "$langfuse_otel_host")' LANGFUSE_CAPTURE_IO_B64='$(b64 "$langfuse_capture_io")' LANGFUSE_FLUSH_ON_SHUTDOWN_B64='$(b64 "$langfuse_flush_on_shutdown")' FINBRIEF_TRACE_SALT_B64='$(b64 "$finbrief_trace_salt")' FRED_API_KEY_B64='$(b64 "$FRED_API_KEY")' ECOS_API_KEY_B64='$(b64 "$ECOS_API_KEY")' NEWS_RSS_URLS_B64='$(b64 "$NEWS_RSS_URLS")' DISCORD_BOT_TOKEN_B64='$(b64 "$DISCORD_BOT_TOKEN")' DISCORD_GUILD_ID_B64='$(b64 "$DISCORD_GUILD_ID")' bash -s" <<'REMOTE'
           set -euo pipefail
 
           decode() {
@@ -337,6 +339,7 @@ jobs:
             append_env LANGFUSE_OTEL_HOST "$(decode "$LANGFUSE_OTEL_HOST_B64")"
             append_env LANGFUSE_CAPTURE_IO "$(decode "$LANGFUSE_CAPTURE_IO_B64")"
             append_env LANGFUSE_FLUSH_ON_SHUTDOWN "$(decode "$LANGFUSE_FLUSH_ON_SHUTDOWN_B64")"
+            append_env FINBRIEF_TRACE_SALT "$(decode "$FINBRIEF_TRACE_SALT_B64")"
             append_env FRED_API_KEY "$(decode "$FRED_API_KEY_B64")"
             append_env ECOS_API_KEY "$(decode "$ECOS_API_KEY_B64")"
             append_env NEWS_RSS_URLS "$(decode "$NEWS_RSS_URLS_B64")"

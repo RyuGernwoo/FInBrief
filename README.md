@@ -169,6 +169,7 @@ Copy-Item .env.example .env
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key |
 | `LANGFUSE_HOST` | Langfuse host URL |
+| `FINBRIEF_TRACE_SALT` | Discord 사용자/채널 ID를 Langfuse metadata에 남길 때 사용하는 hash salt |
 | `FINBRIEF_REPORT_OUT` | 리포트 이미지 출력 경로 |
 | `FINBRIEF_FONT` | 한글 리포트 렌더링용 폰트 경로 |
 | `SERVICE_PORT` | Docker Compose 노출 포트. 기본값 `8000` |
@@ -313,7 +314,7 @@ GitHub Actions는 테스트와 배포를 분리합니다.
 | `FinBrief CI` | push, pull request, 수동 실행 | Python compile, pytest, Docker build |
 | `FinBrief CD` | main CI 성공 후 또는 수동 실행 | GHCR 이미지 빌드/푸시, GCE 배포, health check, rollback |
 
-GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API, Discord, Langfuse, GCE SSH 정보를 등록해야 합니다.
+GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API, Discord, Langfuse, `FINBRIEF_TRACE_SALT`, GCE SSH 정보를 등록해야 합니다.
 
 최소 GCE 배포 Secret은 다음과 같습니다.
 
@@ -324,7 +325,7 @@ GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API,
 | `GCE_SSH_KEY` | 배포용 private key |
 | `SERVICE_PORT` | 서비스 포트. 기본값 `8000` |
 
-실데이터 운영에는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`도 함께 등록합니다.
+실데이터 운영에는 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTAGE_API_KEY`, `GEMINI_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `NEWS_RSS_URLS`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`, `FINBRIEF_TRACE_SALT`도 함께 등록합니다.
 
 수동 배포는 GitHub `Actions` -> `FinBrief CD` -> `Run workflow`에서 실행합니다.
 

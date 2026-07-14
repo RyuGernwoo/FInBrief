@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
-from app.core import llm
+from app.core import llm, observability
+from app.core.config import get_settings
 from app.agents.pipeline import get_latest_result
-from app.services import chatbot_responses as replies
+from app.services import chatbot_observability as chatobs, chatbot_responses as replies
 from app.services.chatbot_persona import is_investment_advice_request
 from app.services.chatbot_suggestions import resolve_topic_id, suggest_topics, starter_topics
 from app.services.report_explainer import build_report_explanation
@@ -27,6 +29,15 @@ RECOMMEND_SYSTEM = (
 
 _TYPE_LABEL = {"indicator": "지표", "asset": "자산", "sector": "섹터", "keyword": "키워드"}
 _TYPE_ORDER = ["indicator", "asset", "sector", "keyword"]
+
+
+def _chat_json(system: str, message: str, *, metadata: dict[str, Any] | None = None) -> dict:
+    """Call llm.chat_json with metadata while keeping older test doubles compatible."""
+
+    try:
+        return llm.chat_json(system, message, metadata=metadata)
+    except TypeError:
+        return llm.chat_json(system, message)
 
 
 def _category_summary(catalog: list, per: int = 3) -> str:
@@ -90,19 +101,40 @@ def _format_list_topics_reply(current: list, catalog: list, tier: dict) -> str:
     )
 
 
-def recommend_topics(message: str, catalog: list, k: int = 5) -> list[str]:
+def recommend_topics(
+    message: str,
+    catalog: list,
+    k: int = 5,
+    *,
+    trace_id: str | None = None,
+    turn_id: str | None = None,
+) -> list[str]:
     """자연어 관심사 → 카탈로그 토픽 추천(정확명). LLM 결과는 카탈로그로 검증, 키 없으면 대표 토픽."""
     names = [t.name for t in catalog]
     if not llm.use_llm():
         return names[:k]                                      # 폴백: 대표 토픽 상위 N
     try:
-        raw = llm.chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), message)
+        metadata = chatobs.build_chatbot_llm_metadata(
+            trace_id=trace_id,
+            turn_id=turn_id,
+            node="chatbot.topic_recommend",
+            message=message,
+            extra={"catalog_count": len(catalog), "limit": k},
+        )
+        raw = _chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), message, metadata=metadata)
         return [n for n in raw.get("topics", []) if n in names][:k]   # ★ 카탈로그 검증
     except Exception:
         return names[:k]
 
 
-def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
+def recommend_from_subs(
+    cur: list,
+    catalog: list,
+    k: int = 3,
+    *,
+    trace_id: str | None = None,
+    turn_id: str | None = None,
+) -> list[str]:
     """현재 구독을 컨텍스트로 보완/유사 토픽 추천(카탈로그 검증). 구독 없으면 대표 토픽."""
     names = [t.name for t in catalog]
     names_by_id = {t.topic_id: t.name for t in catalog}
@@ -113,7 +145,14 @@ def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
     try:
         ctx = ("현재 구독: " + (", ".join(cur_names) or "없음")
                + "\n이 사용자에게 보완/유사한 토픽을 추천해줘.")
-        raw = llm.chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), ctx)
+        metadata = chatobs.build_chatbot_llm_metadata(
+            trace_id=trace_id,
+            turn_id=turn_id,
+            node="chatbot.subscription_recommend",
+            message=ctx,
+            extra={"catalog_count": len(catalog), "subscription_count": len(cur_names), "limit": k},
+        )
+        raw = _chat_json(RECOMMEND_SYSTEM + "\n카탈로그: " + ", ".join(names), ctx, metadata=metadata)
         picks = [n for n in raw.get("topics", []) if n in names and n not in cur_names]
         return picks[:k]
     except Exception:
@@ -192,12 +231,25 @@ def _rule_intent(message: str, catalog: list) -> tuple[str, str | None]:
     return "unknown", topic
 
 
-def parse_intent(message: str, catalog: list) -> tuple[str, str | None]:
+def parse_intent(
+    message: str,
+    catalog: list,
+    *,
+    trace_id: str | None = None,
+    turn_id: str | None = None,
+) -> tuple[str, str | None]:
     names = {t.topic_id: t.name for t in catalog}
     if llm.use_llm():
         try:
             sys = INTENT_SYSTEM + "\n카탈로그: " + json.dumps(names, ensure_ascii=False)
-            raw = llm.chat_json(sys, message)
+            metadata = chatobs.build_chatbot_llm_metadata(
+                trace_id=trace_id,
+                turn_id=turn_id,
+                node="chatbot.intent_parse",
+                message=message,
+                extra={"catalog_count": len(catalog)},
+            )
+            raw = _chat_json(sys, message, metadata=metadata)
             intent = raw.get("intent", "unknown")
             topic = raw.get("topic")
             if topic and topic not in names:
@@ -212,13 +264,122 @@ def _resp(intent, status, reply, topic=None):
     return {"intent": intent, "status": status, "reply": reply, "topic": topic}
 
 
-def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str,
-           channel_id: str | None = None) -> dict:
+def _tool_span_name(intent: str) -> str:
+    return {
+        "add_topic": "chatbot.subscription.add",
+        "delete_topic": "chatbot.subscription.delete",
+        "list_topics": "chatbot.subscription.list",
+        "tier_status": "chatbot.subscription.tier",
+        "recommend_topics": "chatbot.topic.recommend",
+        "clarify_topic": "chatbot.topic.clarify",
+        "explain_report": "chatbot.report.explain",
+        "help": "chatbot.help",
+    }.get(intent, "chatbot.unknown")
+
+
+def _record_chatbot_result(
+    response: dict,
+    *,
+    trace_id: str,
+    turn_id: str,
+    message: str,
+    settings,
+) -> None:
+    reply = str(response.get("reply") or "")
+    metadata = {
+        "trace_id": trace_id,
+        "turn_id": turn_id,
+        "intent": response.get("intent"),
+        "status": response.get("status"),
+        "topic_id": response.get("topic"),
+        "reply_length": len(reply),
+        "message_hash": chatobs.hash_identifier(message, settings=settings, prefix="msg"),
+    }
+    with observability.span(_tool_span_name(str(response.get("intent"))), settings=settings, metadata=metadata) as span:
+        span.update(output=observability.sanitize_metadata(metadata))
+    with observability.span("chatbot.reply.format", settings=settings, metadata=metadata) as span:
+        span.update(
+            output={
+                "intent": response.get("intent"),
+                "status": response.get("status"),
+                "reply_length": len(reply),
+                "captured_reply": chatobs.capture_text(reply, settings),
+            }
+        )
+
+    is_advice_blocked = is_investment_advice_request(message) and response.get("status") == "blocked"
+    score_metadata = {k: v for k, v in metadata.items() if k not in {"trace_id"}}
+    chatobs.score_chatbot_turn(
+        "chatbot.intent_resolved",
+        score=1.0 if response.get("intent") != "unknown" or is_advice_blocked else 0.0,
+        passed=response.get("intent") != "unknown" or is_advice_blocked,
+        trace_id=trace_id,
+        turn_id=turn_id,
+        metadata=score_metadata,
+        settings=settings,
+    )
+    chatobs.score_chatbot_turn(
+        "chatbot.tool_success",
+        score=1.0 if response.get("status") == "completed" else 0.0,
+        passed=response.get("status") == "completed",
+        trace_id=trace_id,
+        turn_id=turn_id,
+        metadata=score_metadata,
+        settings=settings,
+    )
+    chatobs.score_chatbot_turn(
+        "chatbot.reply_format",
+        score=1.0 if bool(reply.strip()) else 0.0,
+        passed=bool(reply.strip()),
+        trace_id=trace_id,
+        turn_id=turn_id,
+        metadata=score_metadata,
+        settings=settings,
+    )
+    if is_advice_blocked:
+        chatobs.score_chatbot_turn(
+            "chatbot.safety.blocked_advice",
+            score=1.0,
+            passed=True,
+            trace_id=trace_id,
+            turn_id=turn_id,
+            metadata=score_metadata,
+            settings=settings,
+        )
+
+
+def _handle_core(
+    service: SubscriptionService,
+    channel: str,
+    ext_user_id: str,
+    message: str,
+    channel_id: str | None = None,
+    *,
+    trace_id: str | None = None,
+    turn_id: str | None = None,
+) -> dict:
     catalog = service.catalog()
     names = {t.topic_id: t.name for t in catalog}
-    intent, topic = parse_intent(message, catalog)
+    with observability.span(
+        "chatbot.intent.parse",
+        metadata={"trace_id": trace_id, "turn_id": turn_id, "channel": channel, "catalog_count": len(catalog)},
+        input=chatobs.capture_text(message),
+    ) as span:
+        intent, topic = parse_intent(message, catalog, trace_id=trace_id, turn_id=turn_id)
+        span.update(output={"intent": intent, "topic_id": topic, "parser": "llm" if llm.use_llm() else "rule"})
     suggestions = suggest_topics(message, catalog, limit=5)
     cats = _category_summary(catalog)
+    with observability.span(
+        "chatbot.topic.match",
+        metadata={"trace_id": trace_id, "turn_id": turn_id, "channel": channel},
+    ) as span:
+        span.update(
+            output={
+                "topic_id": topic,
+                "suggestion_count": len(suggestions),
+                "suggested_topic_ids": [item.topic_id for item in suggestions],
+            }
+        )
 
     if is_investment_advice_request(message):
         return _resp("unknown", "blocked", replies.format_investment_advice_reply(), topic)
@@ -256,7 +417,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         if not topic:
             if suggestions:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
-            reco = recommend_topics(message, catalog)
+            reco = recommend_topics(message, catalog, trace_id=trace_id, turn_id=turn_id)
             hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)} ✨" if reco else f" 가능 예시: {cats}"
             return _resp(intent, "blocked", f"🤔 어떤 토픽을 구독할까요?{hint}")
         try:
@@ -302,8 +463,39 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         return _resp(intent, "blocked",
                      f"앗, '{names.get(topic, topic)}'는 현재 구독 목록에 없어요!\n현재 구독: {subscribed}")
 
-    reco = recommend_topics(message, catalog)
+    reco = recommend_topics(message, catalog, trace_id=trace_id, turn_id=turn_id)
     reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"
     if reco:
         reply += f"\n💡 관심사에 맞춰 추천: {', '.join(reco)}"
     return _resp("unknown", "blocked", reply)
+
+
+def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str,
+           channel_id: str | None = None) -> dict:
+    settings = get_settings()
+    with chatobs.chatbot_turn_trace(
+        channel=channel,
+        ext_user_id=ext_user_id,
+        message=message,
+        channel_id=channel_id,
+        settings=settings,
+    ) as (trace_id, turn_id, observation):
+        response = _handle_core(
+            service,
+            channel,
+            ext_user_id,
+            message,
+            channel_id,
+            trace_id=trace_id,
+            turn_id=turn_id,
+        )
+        _record_chatbot_result(response, trace_id=trace_id, turn_id=turn_id, message=message, settings=settings)
+        observation.update(
+            output={
+                "intent": response.get("intent"),
+                "status": response.get("status"),
+                "topic_id": response.get("topic"),
+                "reply_length": len(str(response.get("reply") or "")),
+            }
+        )
+        return response
