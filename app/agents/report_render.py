@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from datetime import date
 from functools import lru_cache
@@ -66,9 +67,10 @@ def _as_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
     try:
-        return float(value)
+        numeric = float(value)
     except (TypeError, ValueError):
         return None
+    return numeric if math.isfinite(numeric) else None
 
 
 def _pick(item: Mapping[str, Any], *keys: str) -> Any:
@@ -103,6 +105,20 @@ def _round(value: float | None, digits: int) -> float | None:
     return None if value is None else round(value, digits)
 
 
+def _format_number(value: float | None, decimals: int) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:,.{decimals}f}"
+
+
+def _format_value_with_unit(value: float | None, decimals: int, unit: str | None) -> str:
+    number = _format_number(value, decimals)
+    if number == "N/A":
+        return number
+    cleaned_unit = str(unit or "").strip()
+    return f"{number} {cleaned_unit}" if cleaned_unit else number
+
+
 def build_indicator_views(
     indicators: Iterable[Mapping[str, Any]],
     missing_indicators: Iterable[str] = (),
@@ -117,6 +133,7 @@ def build_indicator_views(
         previous = _as_float(_pick(item or {}, "previous_value", "prev"))
         change_value = _as_float(_pick(item or {}, "change_value", "change"))
         change_percent = _as_float(_pick(item or {}, "change_percent", "change_pct"))
+        unit = _pick(item or {}, "unit") or slot.unit
 
         if change_value is None and current is not None and previous is not None:
             change_value = current - previous
@@ -133,6 +150,7 @@ def build_indicator_views(
             current = None
             change_value = None
             change_percent = None
+        rounded_current = _round(current, slot.value_decimals)
 
         views.append(
             {
@@ -141,10 +159,11 @@ def build_indicator_views(
                 "display_name": slot.display_name,
                 "icon_key": slot.icon_key,
                 "source": _pick(item or {}, "source") or slot.source,
-                "unit": _pick(item or {}, "unit") or slot.unit,
+                "unit": unit,
                 "value_decimals": slot.value_decimals,
                 "change_decimals": slot.change_decimals,
-                "current_value": _round(current, slot.value_decimals),
+                "current_value": rounded_current,
+                "value_text": _format_value_with_unit(rounded_current, slot.value_decimals, unit),
                 "previous_value": _round(previous, slot.value_decimals),
                 "change_value": _round(change_value, slot.change_decimals),
                 "change_percent": _round(change_percent, 2),
@@ -170,12 +189,6 @@ def _fit_font(draw: ImageDraw.ImageDraw, text: str, max_width: int, start: int, 
         if draw.textlength(text, font=font) <= max_width:
             return font
     return _font(minimum)
-
-
-def _format_number(value: float | None, decimals: int) -> str:
-    if value is None:
-        return "N/A"
-    return f"{value:,.{decimals}f}"
 
 
 def _format_change(view: Mapping[str, Any]) -> tuple[str, tuple[int, int, int]]:
@@ -237,7 +250,10 @@ def _draw_view(draw: ImageDraw.ImageDraw, view: Mapping[str, Any], col: int, row
     title_font = _fit_font(draw, title, 128, 32, 17)
     draw.text((x + 40, y + 30), title, font=title_font, fill=INK, anchor="lm")
 
-    value = _format_number(view.get("current_value"), int(view["value_decimals"]))
+    value = str(
+        view.get("value_text")
+        or _format_number(view.get("current_value"), int(view["value_decimals"]))
+    )
     value_font = _fit_font(draw, value, 148, 32, 17)
     draw.text((x + cell_w - 22, y + 30), value, font=value_font, fill=INK, anchor="rm")
 
