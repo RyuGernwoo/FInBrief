@@ -83,7 +83,8 @@ def test_list_topics_extended(monkeypatch):
 def test_welcome_text_has_examples():
     """온보딩 문구에 사용 예시가 포함."""
     w = chatbot.welcome_text(_svc())
-    assert "구독" in w and "멘션" in w and "총" in w
+    assert "브리핑 메이트" in w and "구독" in w and "멘션" in w and "총" in w
+    assert "!" in w and ("🚀" in w or "✨" in w)
 
 
 def test_add_topic_ambiguous_recommends(monkeypatch):

@@ -121,11 +121,11 @@ def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
 def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
-    return ("👋 **FinBrief** 구독 봇이에요! 관심 지표를 고르면 매일 아침 7시에 카드뉴스로 브리핑해드려요.\n"
-            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 돼요)\n"
+    return ("👋 **브리핑 메이트**가 도착했어요! 관심 지표를 고르면 매일 아침 7시에 카드뉴스로 신나게 챙겨드릴게요 🚀\n"
+            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 좋아요!)\n"
             "• 조회:  `내 토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n"
             f"• 구독 가능(예시): {cats}\n"
-            "관심사만 편하게 말해도 알맞은 토픽을 추천해드려요. 예) `반도체랑 AI 소식 받고 싶어`")
+            "관심사만 편하게 던져주세요! 예) `반도체랑 AI 소식 받고 싶어` ✨")
 
 
 def _message_tokens(message: str) -> set[str]:
@@ -231,8 +231,8 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
             if suggestions:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
             reco = recommend_topics(message, catalog)
-            hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)}" if reco else f" 가능(예시): {cats}"
-            return _resp(intent, "blocked", f"어떤 토픽을 구독할까요?{hint}")
+            hint = f" 혹시 이런 토픽 어때요? {', '.join(reco)} ✨" if reco else f" 가능 예시: {cats}"
+            return _resp(intent, "blocked", f"🤔 어떤 토픽을 구독할까요?{hint}")
         try:
             cur = service.add(channel, ext_user_id, topic, channel_id)
             tier = service.tier(channel, ext_user_id)
@@ -268,7 +268,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
             return _resp(intent, "blocked", replies.format_delete_needs_topic())
         subscribed = ", ".join(names.get(t, t) for t in sub_ids) or "없음"
         return _resp(intent, "blocked",
-                     f"'{names.get(topic, topic)}'는 현재 구독 목록에 없어요. 현재 구독: {subscribed}")
+                     f"앗, '{names.get(topic, topic)}'는 현재 구독 목록에 없어요!\n현재 구독: {subscribed}")
 
     reco = recommend_topics(message, catalog)
     reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"

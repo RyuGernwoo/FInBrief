@@ -7,27 +7,28 @@ from app.services.chatbot_suggestions import TopicSuggestion
 
 
 def format_help_reply() -> str:
-    examples = "\n".join(f"- {example}" for example in HELP_EXAMPLES)
+    examples = "\n".join(f"• {example}" for example in HELP_EXAMPLES)
     return (
-        f"안녕하세요. 저는 {BOT_NAME_KO}입니다. 관심 금융 토픽을 아침 브리핑에 넣고 빼는 일을 도와드려요.\n"
-        "할 수 있는 일: 토픽 추가, 내 토픽 조회, 구독 취소, 티어 확인.\n"
+        f"✨ 안녕하세요! 저는 {BOT_NAME_KO}예요.\n"
+        "관심 금융 토픽을 착착 정리해서 아침 브리핑으로 챙겨드릴게요! 🚀\n"
+        "할 수 있는 일: 토픽 추가, 내 토픽 조회, 구독 취소, 티어 확인!\n"
         f"예시:\n{examples}"
     )
 
 
 def format_investment_advice_reply() -> str:
     return (
-        "투자 판단은 제가 대신해드릴 수 없습니다.\n"
-        "대신 관심 토픽을 구독해두면 관련 지표와 뉴스 흐름을 아침 브리핑으로 정리해드릴게요.\n"
+        "⚠️ 투자 판단은 제가 대신해드릴 수 없어요!\n"
+        "대신 관심 토픽을 구독해두면 관련 지표와 뉴스 흐름을 아침마다 산뜻하게 정리해드릴게요.\n"
         '예: "비트코인 구독", "나스닥 추가"'
     )
 
 
 def format_add_success(topic_name: str, used: int, max_topics: int) -> str:
     return (
-        f"좋아요. {topic_name}을 아침 브리핑에 추가해둘게요.\n"
-        f"현재 {used}/{max_topics}개 토픽을 구독 중입니다.\n"
-        '다른 관심사가 있으면 "비트코인 추가"처럼 말해 주세요.'
+        f"🎉 좋아요! {topic_name}을 아침 브리핑에 쏙 넣어둘게요.\n"
+        f"현재 {used}/{max_topics}개 토픽을 구독 중이에요!\n"
+        '다른 관심사가 생기면 "비트코인 추가"처럼 편하게 말해 주세요.'
     )
 
 
@@ -35,7 +36,7 @@ def format_add_needs_topic(suggestions: list[TopicSuggestion]) -> str:
     if suggestions:
         return format_clarify_topic_reply(suggestions)
     return (
-        "어떤 토픽을 원하시는지 조금만 더 알려주세요.\n"
+        "🤔 어떤 토픽을 원하시는지 조금만 더 알려주세요!\n"
         '예를 들면 "비트코인 구독", "달러 환율 추가", "반도체 뉴스 받아볼래"처럼 말할 수 있어요.'
     )
 
@@ -44,14 +45,14 @@ def format_topic_not_allowed(topic: str, suggestions: list[TopicSuggestion]) -> 
     if suggestions:
         return format_clarify_topic_reply(suggestions)
     return (
-        f"제가 바로 찾은 토픽에는 {topic}이 없습니다.\n"
+        f"앗, 제가 바로 찾은 토픽에는 {topic}이 없어요!\n"
         '지원 토픽을 보려면 "추천해줘" 또는 "뭐 할 수 있어?"라고 말해 주세요.'
     )
 
 
 def format_topic_limit(max_topics: int) -> str:
     return (
-        f"현재 티어에서는 토픽을 최대 {max_topics}개까지 구독할 수 있습니다.\n"
+        f"📌 현재 티어에서는 토픽을 최대 {max_topics}개까지 구독할 수 있어요!\n"
         '새 토픽을 넣고 싶다면 먼저 "비트코인 취소"처럼 하나를 빼고 다시 추가해 주세요.'
     )
 
@@ -59,11 +60,11 @@ def format_topic_limit(max_topics: int) -> str:
 def format_list_topics(topic_names: list[str]) -> str:
     if not topic_names:
         return (
-            "아직 구독 중인 토픽이 없습니다.\n"
-            '처음이라면 "나스닥 구독" 또는 "추천해줘"라고 말해 보세요.'
+            "아직 구독 중인 토픽이 없어요!\n"
+            '처음이라면 "나스닥 구독" 또는 "추천해줘"라고 말해 보세요. 제가 바로 도와드릴게요 🚀'
         )
     return (
-        f"지금 받아보는 토픽은 {len(topic_names)}개입니다.\n"
+        f"지금 받아보는 토픽은 {len(topic_names)}개예요!\n"
         f"{', '.join(topic_names)}.\n"
         '다른 관심사가 생기면 "반도체 추가"처럼 말해 주세요.'
     )
@@ -72,8 +73,8 @@ def format_list_topics(topic_names: list[str]) -> str:
 def format_tier_status(tier: str, used: int, max_topics: int) -> str:
     remaining = max(max_topics - used, 0)
     return (
-        f"현재 {tier} 티어이고, {max_topics}개 중 {used}개 토픽을 사용 중입니다.\n"
-        f"아직 {remaining}개를 더 추가할 수 있어요."
+        f"📊 현재 {tier} 티어예요!\n"
+        f"{max_topics}개 중 {used}개 토픽을 사용 중이고, 아직 {remaining}개를 더 추가할 수 있어요."
     )
 
 
@@ -86,14 +87,14 @@ def format_delete_needs_topic() -> str:
 
 def format_delete_success(topic_name: str) -> str:
     return (
-        f"{topic_name}은 구독 목록에서 빼두었습니다.\n"
+        f"✅ {topic_name}은 구독 목록에서 빼두었어요!\n"
         "필요하면 언제든 다시 추가할 수 있어요."
     )
 
 
 def format_unknown_reply() -> str:
     return (
-        "제가 바로 도와드릴 수 있는 건 토픽 추가, 목록 조회, 구독 취소, 티어 확인입니다.\n"
+        "제가 바로 도와드릴 수 있는 건 토픽 추가, 목록 조회, 구독 취소, 티어 확인이에요! ✨\n"
         '예: "나스닥 구독해줘", "내 토픽 보여줘", "비트코인 취소해줘"'
     )
 
@@ -101,16 +102,16 @@ def format_unknown_reply() -> str:
 def format_recommend_topics(suggestions: list[TopicSuggestion]) -> str:
     lines = [f"{idx}. {item.name}" for idx, item in enumerate(suggestions, start=1)]
     return (
-        "처음 시작하기 좋은 토픽을 골라봤습니다.\n"
+        "✨ 처음 시작하기 좋은 토픽을 골라봤어요!\n"
         + "\n".join(lines)
-        + '\n마음에 드는 것이 있으면 "나스닥 구독"처럼 말해 주세요.'
+        + '\n마음에 드는 것이 있으면 "나스닥 구독"처럼 말해 주세요!'
     )
 
 
 def format_clarify_topic_reply(suggestions: list[TopicSuggestion]) -> str:
     lines = [f"{idx}. {item.name}" for idx, item in enumerate(suggestions, start=1)]
     return (
-        "말씀하신 내용과 가까운 후보를 찾았습니다.\n"
+        "🔎 말씀하신 내용과 가까운 후보를 찾았어요!\n"
         + "\n".join(lines)
         + '\n원하는 토픽 이름으로 다시 말해 주세요. 예: "미국 기준금리 구독"'
     )
