@@ -50,6 +50,7 @@ def test_cd_workflow_builds_ghcr_deploys_gce_and_keeps_rollback_state():
     assert "LANGFUSE_BASE_URL" in text
     assert "LANGFUSE_OTEL_HOST" in text
     assert "LANGFUSE_CAPTURE_IO" in text
+    assert "FINBRIEF_TRACE_SALT" in text
     assert "docker compose up -d --force-recreate" in text
     assert "/api/v1/health" in text
     assert "APP_ENV: ${APP_ENV:-prod}" in text
@@ -113,6 +114,7 @@ def test_env_example_documents_container_and_stub_variables():
     assert "LANGFUSE_OTEL_HOST=" in text
     assert "LANGFUSE_CAPTURE_IO=true" in text
     assert "LANGFUSE_FLUSH_ON_SHUTDOWN=false" in text
+    assert "FINBRIEF_TRACE_SALT=" in text
 
 
 def test_pyproject_includes_langfuse_observability_dependencies():
@@ -132,3 +134,4 @@ def test_readme_documents_docker_and_ci_cd_paths():
     assert "FinBrief CI" in text
     assert "FinBrief CD" in text
     assert "GCE_HOST" in text
+    assert "FINBRIEF_TRACE_SALT" in text

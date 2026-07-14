@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_capture_io: bool = True
     langfuse_flush_on_shutdown: bool = False
+    finbrief_trace_salt: SecretStr | None = None
 
     fred_api_key: SecretStr | None = None
     ecos_api_key: SecretStr | None = None
