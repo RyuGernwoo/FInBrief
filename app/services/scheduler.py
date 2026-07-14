@@ -1,7 +1,7 @@
 """아침 배치 스케줄러 — 매일 지정 시각(KST)에 배치 1회 실행.
 
 env:
-  FINBRIEF_BATCH_HOUR    실행 시각(0~23, KST). 기본 8.
+  FINBRIEF_BATCH_HOUR    실행 시각(0~23, KST). 기본 7.
   FINBRIEF_BATCH_MINUTE  실행 분. 기본 0.
   FINBRIEF_RUN_ON_START  "1" 이면 기동 즉시 1회 실행(테스트 트리거).
 
@@ -41,7 +41,7 @@ def _safe_run(tag: str) -> None:
 
 
 def main() -> None:
-    hour = int(os.getenv("FINBRIEF_BATCH_HOUR", "8"))
+    hour = int(os.getenv("FINBRIEF_BATCH_HOUR", "7"))
     minute = int(os.getenv("FINBRIEF_BATCH_MINUTE", "0"))
 
     if os.getenv("FINBRIEF_RUN_ON_START") == "1":
