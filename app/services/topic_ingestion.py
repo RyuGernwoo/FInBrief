@@ -38,6 +38,21 @@ def _indicator_provider_exists(topic: Topic) -> bool:
     return any(mapping.provider in {"fred", "yfinance", "ecos"} for mapping in topic.source_mapping)
 
 
+def _unit_for_ticker(ticker: str) -> str | None:
+    """yfinance 티커로 표시 단위 추론(source_mapping 에 unit 이 없을 때).
+    지수는 pt, 한국 종목은 원, 그 외(미국 종목/ETF)는 달러. 환율(=X)은 이름/카테고리로 처리."""
+    t = str(ticker or "").upper()
+    if t.startswith("^"):
+        return "pt"                       # 지수(^IXIC, ^GSPC, ^KS11 …)
+    if t.endswith("=X"):
+        return None                       # 환율 → _display_unit 카테고리 처리(원)
+    if t.endswith(".KS") or t.endswith(".KQ"):
+        return "원"                       # 한국 종목
+    if t.endswith("-USD") or t.endswith("=F"):
+        return "달러"                     # 크립토/선물
+    return "달러"                         # 그 외 = 미국 종목/ETF
+
+
 def collect_topic_indicators(topic: Topic, run_date: date) -> list[IndicatorValue]:
     """Collect indicator values for one topic using its source mappings."""
 
@@ -61,6 +76,7 @@ def collect_topic_indicators(topic: Topic, run_date: date) -> list[IndicatorValu
                         ticker=mapping.ticker,
                         indicator_id=topic.topic_id,
                         name=topic.name,
+                        unit=getattr(mapping, "unit", None) or _unit_for_ticker(mapping.ticker),
                     )
                 )
             elif (

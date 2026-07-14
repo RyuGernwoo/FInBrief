@@ -504,7 +504,13 @@ def _clip_body(s, n: int) -> str:
             end = p + len(m)
             if end >= n * 0.6 and end > best:
                 best = end
-    return cut[:best].rstrip() if best else cut[: n - 1].rstrip() + "…"
+    if best:
+        return cut[:best].rstrip()
+    # 문장 경계가 없으면 마지막 공백(단어 경계)에서 끊어 단어 중간 잘림 방지.
+    sp = cut.rfind(" ")
+    if sp >= n * 0.5:
+        return cut[:sp].rstrip() + "…"
+    return cut[: n - 1].rstrip() + "…"
 
 
 def _display_unit(topic: dict, data: dict) -> str:
@@ -535,10 +541,10 @@ def _fmt_num(value: Any, decimals: int) -> str:
 
 
 def _fmt_value(value: Any, unit: str) -> str:
-    """지표 현재값 포맷: pt(지수)는 정수, 그 외(통화 등)는 소수 2자리."""
+    """지표 현재값 포맷: pt(지수)·원(한국 종목/환율)은 정수, 그 외(달러 등)는 소수 2자리."""
     if value is None:
         return ""
-    decimals = 0 if str(unit or "").strip() == "pt" else 2
+    decimals = 0 if str(unit or "").strip() in ("pt", "원") else 2
     return _fmt_num(value, decimals)
 
 
