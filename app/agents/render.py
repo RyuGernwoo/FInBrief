@@ -98,11 +98,27 @@ def render_card(content: dict, out_path: str) -> str:
         d.text((CANVAS / 2, y), ln, font=_f(33), fill=INK, anchor="mm", stroke_width=1, stroke_fill=INK)
         y += 46
     y += 12
-    for ln in _wrap(d, content.get("body", ""), _f(28), maxw):
-        if y > 944:            # 출처 영역 침범 방지
+    # 본문: 제목/출처와 동일한 원칙으로 '잘림 없이 전체 표시'. 출처 영역(y=944) 전까지
+    # 모든 줄이 들어가는 최대 폰트(28→18)를 고른다. 종전엔 28 고정이라 세로공간을
+    # 넘는 뒷줄을 통째로 버려(…없이) 본문이 '5.'·'…설명.' 처럼 중간에 끊겨 보였다.
+    body = str(content.get("body", ""))
+    body_bottom = 944
+    bsize, step, lines = 28, 40, _wrap(d, body, _f(28), maxw)
+    for sz in range(28, 17, -2):
+        st = sz + 12
+        ls = _wrap(d, body, _f(sz), maxw)
+        bsize, step, lines = sz, st, ls
+        if y + st * (len(ls) - 1) <= body_bottom:
             break
-        d.text((CANVAS / 2, y), ln, font=_f(28), fill=GRAY, anchor="mm")
-        y += 40
+    # 18pt 로도 안 들어가는 비정상적으로 긴 본문은 들어가는 줄까지만 + …(대롱대롱 남는
+    # 번호 '5.' 등은 제거) 로 마무리해 어색한 중간 잘림을 방지.
+    fit_lines = max(1, (body_bottom - y) // step + 1)
+    if len(lines) > fit_lines:
+        lines = lines[:fit_lines]
+        lines[-1] = lines[-1].rstrip("0123456789.· ").rstrip() + "…"
+    for ln in lines:
+        d.text((CANVAS / 2, y), ln, font=_f(bsize), fill=GRAY, anchor="mm")
+        y += step
     # 출처: 카드 폭에 맞춰 폰트 자동 축소(23→14) → … 잘림 방지.
     src = str(content.get("source", ""))
     d.text((CANVAS / 2, CANVAS - 92), src, font=_fit_font(d, src, CANVAS - 2 * padx, 23, 14), fill=GRAY, anchor="mm")
