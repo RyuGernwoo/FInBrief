@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.agents import nodes, rag
 from app.agents.graph import graph
@@ -65,8 +65,11 @@ def test_postprocess_caps_at_k():
     assert len(out) == 3
 
 
-def test_since_for_uses_utc_window():
-    assert rag.since_for(date(2026, 7, 10), days=3) == datetime(2026, 7, 7, tzinfo=timezone.utc)
+def test_since_for_uses_kst_same_day():
+    kst = timezone(timedelta(hours=9))
+    # 기본(days=0)은 해당 KST 날짜 자정 → 당일 뉴스만
+    assert rag.since_for(date(2026, 7, 14)) == datetime(2026, 7, 14, tzinfo=kst)
+    assert rag.since_for(date(2026, 7, 10), days=3) == datetime(2026, 7, 7, tzinfo=kst)
 
 
 # --------------------------------------------------------------------------- #
@@ -231,7 +234,7 @@ def test_graph_live_attaches_rag_evidence_to_card(monkeypatch, tmp_path):
             title="비트코인 ETF 자금 유입",
             source="feed",
             url="https://example.com/n1",
-            published_at=datetime(2026, 7, 9, tzinfo=timezone.utc),
+            published_at=datetime(2026, 7, 10, tzinfo=timezone.utc),  # run_date 당일(KST 창 내)
             summary="가상자산 ETF 자금이 유입되었습니다.",
             tags=["비트코인"],
         )

@@ -64,10 +64,10 @@ def render_card(content: dict, out_path: str) -> str:
     d.rounded_rectangle([16, 16, CANVAS - 16, CANVAS - 16], radius=10, outline=accent, width=3)
     padx = 60
     bx, by, bs = padx, 52, 96
-    d.rounded_rectangle([bx, by, bx + bs, by + bs], radius=6, outline=INK, width=3)
-    d.text((bx + bs / 2, by + 22), str(content.get("category", "")).upper()[:8], font=_f(20), fill=accent, anchor="mm")
-    d.line([bx + 14, by + 40, bx + bs - 14, by + 40], fill=(210, 214, 220), width=1)
-    d.text((bx + bs / 2, by + 68), str(content.get("index_no", "00")), font=_f(52), fill=INK, anchor="mm")
+    # 공유·캐시 카드라 사용자별 순번을 이미지에 구울 수 없음 → 번호 대신 카테고리 뱃지.
+    d.rounded_rectangle([bx, by, bx + bs, by + bs], radius=6, outline=accent, width=3)
+    cat = str(content.get("category", "")).upper()
+    d.text((bx + bs / 2, by + bs / 2), cat, font=_fit_font(d, cat, bs - 20, 30, 15), fill=accent, anchor="mm")
     tx = bx + bs + 26
     d.text((tx, by + 8), content.get("subtitle", ""), font=_f(30), fill=GRAY, anchor="lm")
     # 제목: 오른쪽 여백까지 폭에 맞춰 폰트 자동 축소(60→38). 잘림(…) 없이 전체 표시.
@@ -103,8 +103,9 @@ def render_card(content: dict, out_path: str) -> str:
             break
         d.text((CANVAS / 2, y), ln, font=_f(28), fill=GRAY, anchor="mm")
         y += 40
-    # 출처: 더 크고 진하게(GRAY) 표시
-    d.text((CANVAS / 2, CANVAS - 92), content.get("source", ""), font=_f(23), fill=GRAY, anchor="mm")
+    # 출처: 카드 폭에 맞춰 폰트 자동 축소(23→14) → … 잘림 방지.
+    src = str(content.get("source", ""))
+    d.text((CANVAS / 2, CANVAS - 92), src, font=_fit_font(d, src, CANVAS - 2 * padx, 23, 14), fill=GRAY, anchor="mm")
     d.text((CANVAS / 2, CANVAS - 54), content.get("disclaimer", ""), font=_f(18), fill=MUTED, anchor="mm")
     img.save(out_path)
     return out_path

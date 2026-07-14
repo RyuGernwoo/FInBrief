@@ -87,6 +87,9 @@ def run_morning_pipeline(
     run_date: date,
     run_id: str | None = None,
     dry_run: bool = True,
+    send_report: bool = True,
+    send_cards: bool = True,
+    only_user: str | None = None,
 ) -> BatchRunResult:
     runtime_run_id = run_id or f"run_{run_date:%Y%m%d}_mock"
     settings = get_settings()
@@ -109,6 +112,10 @@ def run_morning_pipeline(
                 "dry_run": dry_run,
                 # Supabase/Upstage 실데이터 모드는 mock 비활성화 시에만 켠다.
                 "live_data": not settings.enable_mock_data,
+                # 발송 범위(배치 트리거 옵션)
+                "deliver_report": send_report,
+                "deliver_cards": send_cards,
+                "only_external_user": only_user,
             }
         )
         trace.update(
