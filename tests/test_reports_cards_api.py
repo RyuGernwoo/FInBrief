@@ -116,6 +116,26 @@ def test_reports_today_returns_latest_mock_report(monkeypatch, tmp_path):
     assert payload["report_url"]
 
 
+def test_reports_today_reads_repository_after_memory_reset(monkeypatch, tmp_path):
+    from app.agents.pipeline import reset_latest_results
+
+    client = _client(monkeypatch, tmp_path)
+    client.post(
+        "/api/v1/subscriptions/report_user_shared/topics",
+        json={"topic_id": "topic_btc", "channel": "discord"},
+    )
+    client.post("/api/v1/reports/run", json={"run_date": "2026-07-10", "dry_run": True})
+    reset_latest_results()
+
+    response = client.get("/api/v1/reports/today", params={"run_date": "2026-07-10"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_date"] == "2026-07-10"
+    assert payload["status"] == "completed"
+    assert payload["report_url"]
+
+
 def test_reports_today_explanation_returns_focus_items(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
     client.post(
@@ -136,3 +156,26 @@ def test_reports_today_explanation_returns_focus_items(monkeypatch, tmp_path):
     assert len(payload["focus_items"]) <= 3
     assert "reply" in payload
     assert "투자 조언이 아닌" in payload["disclaimer"]
+
+
+def test_cards_today_sources_returns_card_source_explanations(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    user_id = "report_user_card_sources"
+    client.post(
+        f"/api/v1/subscriptions/{user_id}/topics",
+        json={"topic_id": "topic_btc", "channel": "discord"},
+    )
+    client.post("/api/v1/reports/run", json={"run_date": "2026-07-10", "dry_run": True})
+
+    response = client.get(
+        "/api/v1/cards/today/sources",
+        params={"user_id": user_id, "run_date": "2026-07-10"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == user_id
+    assert payload["run_date"] == "2026-07-10"
+    assert payload["cards"]
+    assert payload["cards"][0]["topic_id"] == "topic_btc"
+    assert "source_summary" in payload["cards"][0]

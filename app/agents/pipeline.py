@@ -15,6 +15,7 @@ from app.core.schemas import (
     DeliveryLog,
     FullReport,
     IndicatorValue,
+    NewsEvidence,
     TopicAnalysis,
 )
 from app.repositories.protocols import RepositoryBundle
@@ -52,6 +53,10 @@ def _card_from_state(
 
     headline = str(item.get("headline") or item.get("subtitle") or item["topic_id"])
     summary = str(item.get("lead") or item.get("body") or headline)
+    evidence = [
+        NewsEvidence.model_validate(evidence_item)
+        for evidence_item in item.get("evidence", [])
+    ]
     return CardArtifact(
         card_id=str(item.get("card_id") or f"card_{item['topic_id']}_{run_date:%Y%m%d}"),
         topic_id=str(item["topic_id"]),
@@ -64,6 +69,7 @@ def _card_from_state(
             headline=headline,
             summary=summary,
             key_points=[summary],
+            evidence=evidence,
             disclaimer=str(item.get("disclaimer") or DISCLAIMER),
         ),
         cached=bool(item.get("cached", False)),
@@ -159,6 +165,14 @@ def run_morning_pipeline(
         result = result.model_copy(update={"eval_results": eval_results})
         stored_evals = _store_eval_results(repos, eval_results)
         exported_scores = langfuse_scores.score_eval_results(eval_results, settings=runtime_settings)
+        stored_report_result = True
+        try:
+            repos.reports.upsert(result)
+        except Exception as exc:
+            stored_report_result = False
+            result = result.model_copy(
+                update={"errors": [*result.errors, f"REPORT_RESULT_STORE_FAILED: {exc}"]}
+            )
         trace.update(
             output={
                 "status": final.get("status"),
@@ -167,6 +181,7 @@ def run_morning_pipeline(
                 "error_count": len(final.get("errors", [])),
                 "eval_summary": eval_summary(eval_results),
                 "stored_eval_results": stored_evals,
+                "stored_report_result": stored_report_result,
                 "exported_langfuse_scores": exported_scores,
             }
         )
@@ -188,9 +203,9 @@ def get_user_cards(
     user_id: str,
     run_date: date,
 ) -> list[CardArtifact]:
-    repos.users.get_or_create("discord", user_id)
+    user = repos.users.get_or_create("discord", user_id)
     cards: list[CardArtifact] = []
-    for subscription in repos.subscriptions.list_by_user(user_id):
+    for subscription in repos.subscriptions.list_by_user(user.user_id):
         card = repos.cards.get(subscription.topic_id, run_date)
         if card is not None:
             cards.append(card)

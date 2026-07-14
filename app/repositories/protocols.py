@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Protocol
 
 from app.core.schemas import (
+    BatchRunResult,
     CardArtifact,
     EvaluationResult,
     NewsEvidence,
@@ -73,6 +74,28 @@ class EvaluationRepository(Protocol):
     def list_by_run(self, run_id: str) -> list[EvaluationResult]: ...
 
 
+class ReportRunRepository(Protocol):
+    def upsert(self, result: BatchRunResult) -> None: ...
+
+    def get_by_run_id(self, run_id: str) -> BatchRunResult | None: ...
+
+    def get_by_date(self, run_date: date) -> BatchRunResult | None: ...
+
+    def get_latest(self) -> BatchRunResult | None: ...
+
+
+class ReportExplanationRepository(Protocol):
+    def get_by_run_id(self, run_id: str) -> dict[str, object] | None: ...
+
+    def upsert(self, run_id: str, payload: dict[str, object]) -> None: ...
+
+
+class CardSourceExplanationRepository(Protocol):
+    def get(self, topic_id: str, run_date: date) -> dict[str, object] | None: ...
+
+    def upsert(self, topic_id: str, run_date: date, payload: dict[str, object]) -> None: ...
+
+
 @dataclass(slots=True)
 class RepositoryBundle:
     users: UserRepository
@@ -81,3 +104,6 @@ class RepositoryBundle:
     cards: CardRepository
     news: NewsRepository
     evals: EvaluationRepository
+    reports: ReportRunRepository
+    report_explanations: ReportExplanationRepository
+    card_source_explanations: CardSourceExplanationRepository

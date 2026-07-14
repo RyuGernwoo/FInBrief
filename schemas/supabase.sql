@@ -125,6 +125,64 @@ alter table eval_runs add column if not exists trace_id text;
 alter table eval_runs add column if not exists run_date date;
 alter table eval_runs add column if not exists topic_id text;
 
+create table if not exists report_runs (
+    id uuid primary key default gen_random_uuid(),
+    run_id text not null unique,
+    run_date date not null,
+    status text not null,
+    trace_id text,
+    report_id text,
+    report_url text,
+    disclaimer text not null default '본 브리핑은 투자 조언이 아닌 참고용 정보입니다.',
+    indicators jsonb not null default '[]'::jsonb,
+    missing_indicators text[] not null default '{}'::text[],
+    generated_cards integer not null default 0,
+    delivery_results integer not null default 0,
+    eval_summary jsonb not null default '{}'::jsonb,
+    errors jsonb not null default '[]'::jsonb,
+    raw_payload jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (run_date, run_id)
+);
+
+create table if not exists report_explanations (
+    id uuid primary key default gen_random_uuid(),
+    run_id text not null references report_runs(run_id) on delete cascade,
+    run_date date not null,
+    trace_id text,
+    explanation_trace_id text,
+    summary text not null,
+    reply text not null,
+    focus_items jsonb not null default '[]'::jsonb,
+    disclaimer text not null default '본 브리핑은 투자 조언이 아닌 참고용 정보입니다.',
+    source text not null default 'rss_rag',
+    cached boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (run_id)
+);
+
+create table if not exists card_source_explanations (
+    id uuid primary key default gen_random_uuid(),
+    topic_id text not null,
+    run_date date not null,
+    card_id text,
+    trace_id text,
+    explanation_trace_id text,
+    topic_name text not null,
+    source_summary text not null,
+    reply text not null,
+    sources jsonb not null default '[]'::jsonb,
+    evidence_count integer not null default 0,
+    disclaimer text not null default '본 브리핑은 투자 조언이 아닌 참고용 정보입니다.',
+    source text not null default 'card_evidence_rag',
+    cached boolean not null default true,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (topic_id, run_date)
+);
+
 create index if not exists idx_subscriptions_user_active
     on subscriptions(user_id, active);
 
@@ -148,6 +206,18 @@ create index if not exists idx_eval_runs_run_name
 
 create index if not exists idx_eval_runs_trace
     on eval_runs(trace_id);
+
+create index if not exists idx_report_runs_date
+    on report_runs(run_date desc);
+
+create index if not exists idx_report_runs_trace
+    on report_runs(trace_id);
+
+create index if not exists idx_report_explanations_date
+    on report_explanations(run_date desc);
+
+create index if not exists idx_card_source_explanations_date
+    on card_source_explanations(run_date desc);
 
 create or replace function match_news(
     query_embedding vector(4096),

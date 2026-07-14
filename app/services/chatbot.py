@@ -4,20 +4,22 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import Any
 
 from app.core import llm, observability
 from app.core.config import get_settings
-from app.agents.pipeline import get_latest_result
 from app.services import chatbot_observability as chatobs, chatbot_responses as replies
+from app.services.card_source_explanation_service import get_user_card_source_explanations
 from app.services.chatbot_persona import is_investment_advice_request
 from app.services.chatbot_suggestions import resolve_topic_id, suggest_topics, starter_topics
-from app.services.report_explainer import build_report_explanation
+from app.services.report_explanation_service import get_or_build_report_explanation
+from app.services.report_result_service import get_report_result
 from app.services.subscription_service import SubscriptionService, TopicNotAllowed, MaxTopicsExceeded
 
 INTENT_SYSTEM = (
     "너는 금융 카드뉴스 구독 관리 봇의 의도 분류기다. 사용자 메시지를 아래 JSON으로만 답한다. "
-    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|explain_report|unknown", '
+    '{"intent": "add_topic|list_topics|delete_topic|tier_status|help|recommend_topics|explain_report|explain_card_sources|unknown", '
     '"topic": "<카탈로그 토픽명 또는 null>"}'
     " topic은 반드시 주어진 카탈로그 중 하나로 매핑하고, 없으면 null."
 )
@@ -215,6 +217,11 @@ def _rule_intent(message: str, catalog: list) -> tuple[str, str | None]:
     if any(k in message for k in ("추천", "뭐 받아", "인기", "처음")):
         return "recommend_topics", None
     if (
+        any(k in message for k in ("카드뉴스", "카드 뉴스", "카드"))
+        and any(k in message for k in ("출처", "근거", "기사", "참고"))
+    ):
+        return "explain_card_sources", topic
+    if (
         any(k in message for k in ("리포트", "시장 설명", "지표 설명", "변동 큰", "집중해서"))
         or "report" in m
         or all(k in message for k in ("오늘", "뭐", "봐야"))
@@ -260,8 +267,11 @@ def parse_intent(
     return _rule_intent(message, catalog)
 
 
-def _resp(intent, status, reply, topic=None):
-    return {"intent": intent, "status": status, "reply": reply, "topic": topic}
+def _resp(intent, status, reply, topic=None, *, trace_metadata: dict[str, Any] | None = None):
+    response = {"intent": intent, "status": status, "reply": reply, "topic": topic}
+    if trace_metadata:
+        response["_trace_metadata"] = trace_metadata
+    return response
 
 
 def _tool_span_name(intent: str) -> str:
@@ -273,6 +283,7 @@ def _tool_span_name(intent: str) -> str:
         "recommend_topics": "chatbot.topic.recommend",
         "clarify_topic": "chatbot.topic.clarify",
         "explain_report": "chatbot.report.explain",
+        "explain_card_sources": "chatbot.card_sources.explain",
         "help": "chatbot.help",
     }.get(intent, "chatbot.unknown")
 
@@ -295,6 +306,9 @@ def _record_chatbot_result(
         "reply_length": len(reply),
         "message_hash": chatobs.hash_identifier(message, settings=settings, prefix="msg"),
     }
+    trace_metadata = response.get("_trace_metadata")
+    if isinstance(trace_metadata, dict):
+        metadata.update(trace_metadata)
     with observability.span(_tool_span_name(str(response.get("intent"))), settings=settings, metadata=metadata) as span:
         span.update(output=observability.sanitize_metadata(metadata))
     with observability.span("chatbot.reply.format", settings=settings, metadata=metadata) as span:
@@ -389,14 +403,48 @@ def _handle_core(
     if intent == "recommend_topics":
         return _resp(intent, "completed", replies.format_recommend_topics(starter_topics(catalog, limit=5)))
     if intent == "explain_report":
-        result = get_latest_result()
+        result = get_report_result(service.repos)
         if result is None:
             return _resp(intent, "blocked", replies.format_report_not_generated_reply())
         try:
-            payload = build_report_explanation(result, repos=service.repos, max_focus=3)
-            return _resp(intent, "completed", str(payload["reply"]))
+            payload = get_or_build_report_explanation(service.repos, result=result, max_focus=3)
+            return _resp(
+                intent,
+                "completed",
+                str(payload["reply"]),
+                trace_metadata={
+                    "linked_run_id": result.run_id,
+                    "linked_trace_id": result.trace_id,
+                    "report_explanation_cached": payload.get("cached"),
+                },
+            )
         except Exception:
             return _resp(intent, "blocked", replies.format_report_not_generated_reply())
+    if intent == "explain_card_sources":
+        try:
+            payload = get_user_card_source_explanations(
+                service.repos,
+                user_id=ext_user_id,
+                run_date=date.today(),
+                topic_id=topic,
+            )
+            if not payload.get("cards"):
+                return _resp(intent, "blocked", replies.format_card_sources_not_generated_reply(), topic)
+            cards = list(payload.get("cards") or [])
+            return _resp(
+                intent,
+                "completed",
+                replies.format_card_sources_reply(payload),
+                topic,
+                trace_metadata={
+                    "linked_card_ids": [item.get("card_id") for item in cards],
+                    "linked_topic_ids": [item.get("topic_id") for item in cards],
+                    "card_source_explanation_cached": all(bool(item.get("cached")) for item in cards),
+                    "card_source_count": sum(len(item.get("sources") or []) for item in cards),
+                },
+            )
+        except Exception:
+            return _resp(intent, "blocked", replies.format_card_sources_not_generated_reply(), topic)
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)
@@ -496,6 +544,7 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
                 "status": response.get("status"),
                 "topic_id": response.get("topic"),
                 "reply_length": len(str(response.get("reply") or "")),
+                **(response.get("_trace_metadata") or {}),
             }
         )
-        return response
+        return {key: value for key, value in response.items() if not key.startswith("_")}
