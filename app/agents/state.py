@@ -25,6 +25,10 @@ class BriefState(TypedDict, total=False):
     live_data: bool
     ingestion: Any
     embedding_provider: Any
+    # 발송 범위 제어(배치 트리거 옵션): 리포트/카드 발송 여부, 특정 계정만 필터
+    deliver_report: bool
+    deliver_cards: bool
+    only_external_user: str | None
     subscriptions: list[dict[str, Any]]
     unique_topics: list[dict[str, Any]]
     topics_to_generate: list[dict[str, Any]]

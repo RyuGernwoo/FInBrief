@@ -15,6 +15,7 @@ def test_settings_load_default_local_values():
     assert settings.finbrief_llm_guardrail_enabled is True
     assert settings.finbrief_llm_pii_masking is True
     assert "반드시 수익" in settings.finbrief_llm_forbidden_terms
+    assert "지금 매수" in settings.finbrief_llm_forbidden_terms
     assert "매수" not in settings.finbrief_llm_forbidden_terms
 
 
@@ -69,7 +70,7 @@ def test_settings_reject_api_prefix_without_leading_slash():
 
 
 def test_public_settings_exclude_secret_values():
-    settings = Settings(discord_webhook_url="https://example.invalid/secret-token")
+    settings = Settings(upstage_api_key="secret-token")
 
     public_data = settings.public_dict()
 

@@ -84,3 +84,24 @@ def test_add_topic_ambiguous_recommends(monkeypatch):
     r = chatbot.handle(_svc(), "discord", "u9", "뭔가 구독하고 싶어")
     assert r["intent"] == "add_topic" and r["status"] == "blocked"
     assert "토픽" in r["reply"]
+
+
+def test_delete_ambiguous_resolves_to_subscription(monkeypatch):
+    """'환율 제거' 모호어 → 구독 중인 USD/KRW 하나로 해결해 제거."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    s = _svc()
+    cat = s.catalog()
+    usdkrw = next(t for t in cat if t.normalized_name == "usdkrw")
+    s.add("discord", "del_u1", usdkrw.topic_id, "c")
+    r = chatbot.handle(s, "discord", "del_u1", "환율 제거해", "c")
+    assert r["intent"] == "delete_topic" and r["status"] == "completed"
+    assert len(s.list("discord", "del_u1")) == 0
+
+
+def test_delete_not_subscribed_blocked(monkeypatch):
+    """구독하지 않은 토픽 제거 시도 → 현재 구독 안내(blocked)."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    s = _svc()
+    r = chatbot.handle(s, "discord", "del_u2", "비트코인 제거", "c")
+    assert r["intent"] == "delete_topic" and r["status"] == "blocked"
+    assert "구독 목록에 없" in r["reply"]

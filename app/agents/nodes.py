@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from datetime import date
 from typing import Any
 
@@ -214,30 +215,38 @@ def _parse_run_date(value: Any) -> date:
 
 
 def collect_topics(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 토픽 → 고유 집합(dedup)."""
+    """[나] 구독 토픽 → 고유 집합(dedup).
+    배치 트리거 옵션: only_external_user 로 특정 계정만, deliver_cards=False 면 카드 생성 스킵."""
     repos: RepositoryBundle | None = state.get("repositories")
+    only_user = state.get("only_external_user")            # external_user_id, None=전체
+    want_cards = state.get("deliver_cards", True)
     if repos is not None:
         subscriptions = repos.subscriptions.list_active()
+        if only_user:
+            # 특정 계정만 필터(테스트용). 존재하는 ID 면 그 user 로, 없으면 매칭 0건.
+            uid = repos.users.get_or_create("discord", only_user).user_id
+            subscriptions = [s for s in subscriptions if s.user_id == uid]
         seen: set[str] = set()
         topics: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
 
-        for subscription in subscriptions:
-            topic_id = subscription.topic_id
-            if topic_id in seen:
-                continue
-            try:
-                topics.append(_graph_topic(repos.topics.get(topic_id)))
-                seen.add(topic_id)
-            except RepositoryNotFoundError as exc:
-                errors.append(
-                    {
-                        "code": exc.code,
-                        "message": str(exc),
-                        "node": "collect_topics",
-                        "topic": topic_id,
-                    }
-                )
+        if want_cards:                                     # 카드 미발송이면 토픽 생성 자체를 스킵(비용 절감)
+            for subscription in subscriptions:
+                topic_id = subscription.topic_id
+                if topic_id in seen:
+                    continue
+                try:
+                    topics.append(_graph_topic(repos.topics.get(topic_id)))
+                    seen.add(topic_id)
+                except RepositoryNotFoundError as exc:
+                    errors.append(
+                        {
+                            "code": exc.code,
+                            "message": str(exc),
+                            "node": "collect_topics",
+                            "topic": topic_id,
+                        }
+                    )
 
         result: dict[str, Any] = {
             "subscriptions": [item.model_dump(mode="json") for item in subscriptions],
@@ -379,11 +388,19 @@ def load_cached_cards(state: BriefState) -> dict[str, Any]:
     run_date = _parse_run_date(state["run_date"])
     cached_cards: list[dict[str, Any]] = []
     topics_to_generate: list[dict[str, Any]] = []
+    # 이미지 발송 모드인데 캐시 카드의 이미지가 로컬 임시경로라 현재 컨테이너에 없으면
+    # 텍스트로 폴백되므로, 그 경우 캐시를 버리고 재생성한다.
+    want_image = image_gen.image_enabled()
 
     for topic in topics:
         cached = repos.cards.get(topic["topic_id"], run_date)
         if cached is None:
             topics_to_generate.append(topic)
+            continue
+        img = str(cached.image_url or "")
+        img_ok = img.startswith("http") or (bool(img) and os.path.exists(img))
+        if want_image and not img_ok:
+            topics_to_generate.append(topic)   # 이미지 원하는데 캐시 이미지 유실 → 재생성
         else:
             cached_cards.append(_card_from_artifact(cached.model_copy(update={"cached": True})))
 
@@ -518,9 +535,10 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
     unit = _display_unit(topic, data)
     chg = data.get("change_pct", 0.0) or 0.0
     arrow = "상승" if chg > 0 else ("하락" if chg < 0 else "보합")
+    snippet = (news[0].get("snippet") or news[0].get("title") or "").strip() if news else ""
     return {"headline": f"{topic['name']} {arrow}",
             "lead": f"{topic['name']} {_fmt_value(data.get('value'), unit)} ({_fmt_pct(chg)}%)",
-            "body": (news[0]["snippet"] if news else "관련 뉴스 없음") + " (local)",
+            "body": snippet or f"{topic['name']} 최신 지표 기준 요약입니다.",
             "source": "FinBrief"}
 
 def _clean_source(s: str) -> str:
@@ -621,7 +639,8 @@ def _gen_image_prompt(
 
 
 def _img_out() -> str:
-    return os.environ.get("FINBRIEF_IMG_OUT") or os.path.join(_DIR, "out_llm")
+    # 기본값을 쓰기가능 임시 디렉터리로. 설치본(site-packages)은 읽기전용이라 makedirs 실패함.
+    return os.environ.get("FINBRIEF_IMG_OUT") or os.path.join(tempfile.gettempdir(), "finbrief_img")
 
 
 def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
@@ -630,7 +649,8 @@ def _generate_image(prompt: str, topic_id: str, run_date: str) -> str | None:
 
 
 def _compose_card(content: dict, topic_id: str, run_date: str) -> str:
-    out = os.environ.get("FINBRIEF_OUT") or os.path.join(os.path.dirname(__file__), "out")
+    # 기본값을 쓰기가능 임시 디렉터리로(설치본 site-packages 는 읽기전용 → PermissionError 방지).
+    out = os.environ.get("FINBRIEF_OUT") or os.path.join(tempfile.gettempdir(), "finbrief_out")
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, f"{run_date}_{topic_id}.png")
     return render_card(content, path)
@@ -712,22 +732,20 @@ def aggregate_cards(state: BriefState) -> dict[str, Any]:  # [나]
     }
 
 
-def _webhook_for(channel: str) -> str:
-    return os.getenv("DISCORD_WEBHOOK_URL", "") if channel == "discord" else os.getenv("SLACK_WEBHOOK_URL", "")
-
-
 def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | None) -> dict[str, Any]:
-    """채널 라우팅: discord + channel_id 면 봇 직접 발송, 아니면 웹훅."""
-    if channel == "discord" and channel_id and hasattr(notifier, "send_via_bot"):
+    """발송: discord + channel_id 면 봇 직접 발송. 그 외(채널ID 없음/비discord)는 skip."""
+    if channel == "discord" and channel_id:
         return notifier.send_via_bot(channel_id=channel_id, text=text, image_path=image_path)
-    return notifier.send_card(channel=channel, webhook_url=_webhook_for(channel), text=text, image_path=image_path)
+    return {"status": "skipped"}
 
 
 def deliver(state: BriefState) -> dict[str, Any]:
     """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
-    report_url = state.get("report_url")
+    want_report = state.get("deliver_report", True)
+    want_cards = state.get("deliver_cards", True)
+    report_url = state.get("report_url") if want_report else None
     deliveries = []
 
     # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
@@ -752,33 +770,34 @@ def deliver(state: BriefState) -> dict[str, Any]:
                 "error_code": res.get("error"),
             })
 
-    # 2) 구독 토픽별 카드 발송.
-    for sub in subscriptions:
-        topic_id = _value(sub, "topic_id")
-        user_id = _value(sub, "user_id")
-        channel = _value(sub, "channel")
-        channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-        card = by_topic.get(topic_id)
+    # 2) 구독 토픽별 카드 발송 (deliver_cards=False 면 스킵).
+    if want_cards:
+        for sub in subscriptions:
+            topic_id = _value(sub, "topic_id")
+            user_id = _value(sub, "user_id")
+            channel = _value(sub, "channel")
+            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
+            card = by_topic.get(topic_id)
 
-        base = {
-            "delivery_id": f"{user_id}:{topic_id}",
-            "user_id": user_id,
-            "channel": channel,
-            "topic_id": topic_id,
-            "card_id": card.get("card_id") if card else None,
-        }
+            base = {
+                "delivery_id": f"{user_id}:{topic_id}",
+                "user_id": user_id,
+                "channel": channel,
+                "topic_id": topic_id,
+                "card_id": card.get("card_id") if card else None,
+            }
 
-        if not card:
-            deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
-            continue
+            if not card:
+                deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
+                continue
 
-        res = _send_to(channel, channel_id, notifier.format_card_text(card),
-                       card.get("image_path") or card.get("image_url"))
-        deliveries.append({
-            **base,
-            "status": res.get("status", "failed"),
-            "attempts": 1,
-            "error_code": res.get("error"),
-        })
+            res = _send_to(channel, channel_id, notifier.format_card_text(card),
+                           card.get("image_path") or card.get("image_url"))
+            deliveries.append({
+                **base,
+                "status": res.get("status", "failed"),
+                "attempts": 1,
+                "error_code": res.get("error"),
+            })
 
     return {"deliveries": deliveries}

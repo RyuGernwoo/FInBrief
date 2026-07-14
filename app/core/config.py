@@ -45,13 +45,24 @@ class Settings(BaseSettings):
     finbrief_llm_require_json: bool = True
     finbrief_llm_require_disclaimer: bool = True
     finbrief_llm_forbidden_terms: Annotated[list[str], NoDecode] = Field(
+        # 투자'조언'을 나타내는 구(phrase)만 금지. "매수/매도/보유" 맨 단어는 사실 보도
+        # 뉴스(달러 매수세·외환 보유 등)에도 흔히 나와 오탐→카드 폴백을 유발하므로 제외.
         default_factory=lambda: [
+            "매수 추천",
+            "매도 추천",
+            "매수하세요",
+            "매도하세요",
+            "매수 타이밍",
+            "매도 타이밍",
+            "보유 추천",
+            "지금 매수",
+            "지금 매도",
+            "지금 사야",
+            "지금 팔아야",
             "확정 수익",
             "무조건 상승",
             "반드시 수익",
             "강력 추천",
-            "지금 사야",
-            "지금 팔아야",
             "손실 없음",
             "보장 수익",
             "수익 보장",
@@ -73,8 +84,6 @@ class Settings(BaseSettings):
     ecos_api_key: SecretStr | None = None
     news_rss_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
-    discord_webhook_url: SecretStr | None = None
-    slack_webhook_url: SecretStr | None = None
     delivery_dry_run: bool = True
 
     @field_validator("api_v1_prefix")

@@ -123,7 +123,7 @@ def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
         return "recommend_topics", None
     if any(k in message for k in ("추가", "구독", "등록")) or "add" in m:
         return "add_topic", topic
-    if any(k in message for k in ("삭제", "취소", "해지", "빼")) or any(k in m for k in ("remove", "delete")):
+    if any(k in message for k in ("삭제", "제거", "취소", "해지", "빼", "지워")) or any(k in m for k in ("remove", "delete")):
         return "delete_topic", topic
     if any(k in message for k in ("목록", "내 토픽", "내토픽", "조회", "리스트")) or "list" in m:
         return "list_topics", None
@@ -208,14 +208,25 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         except MaxTopicsExceeded as e:
             return _resp(intent, "blocked", replies.format_topic_limit(int(e.args[0])))
     if intent == "delete_topic":
-        if _should_clarify_selected_topic(message, names, topic, suggestions):
-            return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
+        # 삭제는 '구독 중인 토픽' 범위로 좁혀 매칭한다. 전체 카탈로그로 보면 "환율" 같은
+        # 부분어가 여러 후보(EUR/USD·USD/KRW…)와 모호해지지만, 구독한 게 하나면 바로 제거.
+        cur = service.list(channel, ext_user_id)
+        sub_ids = {s.topic_id for s in cur}
+        if topic not in sub_ids:
+            sub_topics = [t for t in catalog if t.topic_id in sub_ids]
+            sub_sugg = suggest_topics(message, sub_topics, limit=5)
+            if len(sub_sugg) == 1:
+                topic = sub_sugg[0].topic_id
+            elif len(sub_sugg) > 1:
+                return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(sub_sugg))
+        if topic and topic in sub_ids:
+            service.remove(channel, ext_user_id, topic)
+            return _resp(intent, "completed", replies.format_delete_success(names.get(topic, topic)), topic)
         if not topic:
-            if suggestions:
-                return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
             return _resp(intent, "blocked", replies.format_delete_needs_topic())
-        service.remove(channel, ext_user_id, topic)
-        return _resp(intent, "completed", replies.format_delete_success(names.get(topic, topic)), topic)
+        subscribed = ", ".join(names.get(t, t) for t in sub_ids) or "없음"
+        return _resp(intent, "blocked",
+                     f"'{names.get(topic, topic)}'는 현재 구독 목록에 없어요. 현재 구독: {subscribed}")
 
     reco = recommend_topics(message, catalog)
     reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"
