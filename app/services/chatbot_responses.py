@@ -101,11 +101,14 @@ def format_delete_success(topic_name: str) -> str:
     )
 
 
-def format_unknown_reply() -> str:
-    return (
+def format_unknown_reply(answer: str | None = None) -> str:
+    fallback = (
         "\n제가 바로 도와드릴 수 있는 건 `토픽 구독`, `목록 조회`, `구독 취소`, `리포트 설명`, `출처 설명`, `티어 확인`이에요! ✨\n\n"
         '예: "나스닥 구독해줘", "내 토픽 보여줘", "비트코인 취소해줘", "리포트 설명해줘", "출처 설명해줘", "티어 확인해줘"'
     )
+    if not answer:
+        return fallback
+    return f"\n💬 {answer.strip()}\n\n{fallback}"
 
 
 def format_report_not_generated_reply() -> str:
