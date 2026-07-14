@@ -60,16 +60,24 @@ def test_recommend_topics_fallback_without_llm(monkeypatch):
 
 
 def test_list_topics_extended(monkeypatch):
-    """목록 조회 = 현재 구독 + 총 개수(구독 가능) + 추천."""
-    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")   # 추천은 폴백(대표 토픽)
+    """목록 조회 = 현재 구독 표 + 전체 구독 가능 토픽 표."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
     s = _svc()
-    topic = s.catalog()[0]
+    catalog = s.catalog()
+    topic = catalog[0]
+    nasdaq = next(t for t in catalog if t.normalized_name == "nasdaq")
     s.add("discord", "u1", topic.topic_id, "123")
+    s.add("discord", "u1", nasdaq.topic_id, "123")
     r = chatbot.handle(s, "discord", "u1", "내 토픽 목록")
     assert r["intent"] == "list_topics" and r["status"] == "completed"
     assert topic.name in r["reply"]          # 현재 구독 표시
+    assert nasdaq.name in r["reply"]
     assert "총" in r["reply"]                 # 전체 개수(요약)
     assert "구독 가능" in r["reply"]
+    assert "| 번호 | 현재 구독 토픽 | 유형 |" in r["reply"]
+    assert "| 유형 | 구독 가능 토픽 |" in r["reply"]
+    assert "💡" not in r["reply"]
+    assert "추천" not in r["reply"]
 
 
 def test_welcome_text_has_examples():

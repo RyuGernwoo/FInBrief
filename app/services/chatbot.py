@@ -39,6 +39,55 @@ def _category_summary(catalog: list, per: int = 3) -> str:
     return " / ".join(parts) + f" … (총 {len(catalog)}개)"
 
 
+def _table_cell(value: object) -> str:
+    return str(value).replace("|", "/").replace("\n", " ").strip()
+
+
+def _type_label(topic_type: object) -> str:
+    return _TYPE_LABEL.get(str(topic_type), str(topic_type or "-"))
+
+
+def _subscription_table(current: list, catalog: list) -> str:
+    topics_by_id = {t.topic_id: t for t in catalog}
+    rows = ["| 번호 | 현재 구독 토픽 | 유형 |", "| ---: | --- | --- |"]
+    if not current:
+        rows.append("| - | 없음 | - |")
+        return "\n".join(rows)
+
+    for index, subscription in enumerate(current, start=1):
+        topic = topics_by_id.get(subscription.topic_id)
+        name = topic.name if topic else subscription.topic_id
+        topic_type = topic.type if topic else "-"
+        rows.append(f"| {index} | {_table_cell(name)} | {_table_cell(_type_label(topic_type))} |")
+    return "\n".join(rows)
+
+
+def _catalog_table(catalog: list) -> str:
+    from collections import defaultdict
+
+    buckets: dict = defaultdict(list)
+    for topic in catalog:
+        buckets[str(getattr(topic, "type", "기타"))].append(topic.name)
+    keys = [key for key in _TYPE_ORDER if key in buckets] + [
+        key for key in buckets if key not in _TYPE_ORDER
+    ]
+
+    rows = ["| 유형 | 구독 가능 토픽 |", "| --- | --- |"]
+    for key in keys:
+        names = ", ".join(_table_cell(name) for name in buckets[key])
+        rows.append(f"| {_table_cell(_type_label(key))} | {names} |")
+    return "\n".join(rows)
+
+
+def _format_list_topics_reply(current: list, catalog: list, tier: dict) -> str:
+    return (
+        f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']})\n"
+        f"{_subscription_table(current, catalog)}\n\n"
+        f"🗂️ **전체 구독 가능 토픽** (총 {len(catalog)}개)\n"
+        f"{_catalog_table(catalog)}"
+    )
+
+
 def recommend_topics(message: str, catalog: list, k: int = 5) -> list[str]:
     """자연어 관심사 → 카탈로그 토픽 추천(정확명). LLM 결과는 카탈로그로 검증, 키 없으면 대표 토픽."""
     names = [t.name for t in catalog]
@@ -72,7 +121,7 @@ def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
 def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
-    return ("👋 **FinBrief** 구독 봇이에요! 관심 지표를 고르면 매일 아침 카드뉴스로 브리핑해드려요.\n"
+    return ("👋 **FinBrief** 구독 봇이에요! 관심 지표를 고르면 매일 아침 7시에 카드뉴스로 브리핑해드려요.\n"
             "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 돼요)\n"
             "• 조회:  `내 토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n"
             f"• 구독 가능(예시): {cats}\n"
@@ -170,15 +219,8 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
 
     if intent == "list_topics":
         cur = service.list(channel, ext_user_id)
-        subscribed_names = [names.get(s.topic_id, s.topic_id) for s in cur]
-        subscribed = ", ".join(subscribed_names) or "없음"
         tier = service.tier(channel, ext_user_id)
-        reco = recommend_from_subs(cur, catalog)
-        reply = (f"📋 **현재 구독** ({tier['used']}/{tier['max_topics']}): {subscribed}\n"
-                 f"🗂️ **구독 가능**(총 {len(catalog)}개): {cats}")
-        if reco:
-            reply += f"\n💡 이런 토픽도 관심 있으실 것 같아요: {', '.join(reco)}"
-        return _resp(intent, "completed", reply)
+        return _resp(intent, "completed", _format_list_topics_reply(cur, catalog, tier))
     if intent == "tier_status":
         t = service.tier(channel, ext_user_id)
         return _resp(intent, "completed", replies.format_tier_status(t["tier"], t["used"], t["max_topics"]))
