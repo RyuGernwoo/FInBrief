@@ -2,6 +2,7 @@
    지금은 fixtures 로 동작만 확인(관통). 실구현 시 파일 분리."""
 from __future__ import annotations
 
+import html
 import os
 import re
 import tempfile
@@ -50,6 +51,19 @@ def _live_ingestion() -> Any:
         return None
 
 
+def _embed_passage_with_retry(provider: Any, document: Any, *, attempts: int = 3) -> Any:
+    """passage 임베딩. 일시 오류(레이트리밋/타임아웃) 시 백오프 재시도. 최종 실패면 None."""
+    import time
+
+    for i in range(attempts):
+        try:
+            return provider.embed_passage(document)
+        except Exception:
+            if i < attempts - 1:
+                time.sleep(1.0 * (i + 1))
+    return None
+
+
 def _news_id_by_url(rows: Any) -> dict[str, str]:
     """upsert_news_documents 응답에서 url -> DB news id 매핑을 만든다."""
     mapping: dict[str, str] = {}
@@ -85,23 +99,34 @@ def ingest_news(state: BriefState) -> dict[str, Any]:
             return {}
 
         id_by_url = _news_id_by_url(ingestion.upsert_news_documents(documents))
+        # 이미 임베딩된 문서는 스킵(재임베딩 버스트→레이트리밋 방지). 미임베딩은 다음 실행에
+        # 재시도되어 자연 백필된다. 조회 미지원(테스트 mock)이면 전체 대상.
+        all_ids = [i for i in (id_by_url.get(str(d.url)) for d in documents) if i]
+        already = (ingestion.existing_passage_news_ids(all_ids)
+                   if hasattr(ingestion, "existing_passage_news_ids") else set())
         rows: list[dict[str, Any]] = []
+        failed = 0
         for document in documents:
             news_id = id_by_url.get(str(document.url))
-            if news_id is None:
+            if news_id is None or news_id in already:
                 continue
-            try:
-                rows.append({
-                    "news_id": news_id,
-                    "embedding": provider.embed_passage(document),
-                    "embedding_model": EMBEDDING_PASSAGE_MODEL,
-                    "embedding_kind": "passage",
-                })
-            except Exception:
+            embedding = _embed_passage_with_retry(provider, document)
+            if embedding is None:
+                failed += 1
                 continue
+            rows.append({
+                "news_id": news_id,
+                "embedding": embedding,
+                "embedding_model": EMBEDDING_PASSAGE_MODEL,
+                "embedding_kind": "passage",
+            })
         if rows:
             ingestion.upsert_news_embeddings(rows)
-        return {}
+        result: dict[str, Any] = {}
+        if failed:
+            result["errors"] = [{"code": "EMBED_PARTIAL", "message": f"{failed} embeddings failed after retries",
+                                 "node": "ingest_news", "topic": None}]
+        return result
     except Exception as exc:
         return {"errors": [{"code": "INGEST_FAILED", "message": str(exc),
                             "node": "ingest_news", "topic": None}]}
@@ -535,10 +560,13 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
     unit = _display_unit(topic, data)
     chg = data.get("change_pct", 0.0) or 0.0
     arrow = "상승" if chg > 0 else ("하락" if chg < 0 else "보합")
-    snippet = (news[0].get("snippet") or news[0].get("title") or "").strip() if news else ""
+    # 폴백 본문: 근거 뉴스 스니펫들을 합쳐 HTML 엔티티 제거 후 문장 경계로 정리.
+    parts = [html.unescape(str(n.get("snippet") or n.get("title") or "")).strip()
+             for n in (news or [])[:3]]
+    body = _clip_body(" ".join(p for p in parts if p), 240)
     return {"headline": f"{topic['name']} {arrow}",
             "lead": f"{topic['name']} {_fmt_value(data.get('value'), unit)} ({_fmt_pct(chg)}%)",
-            "body": snippet or f"{topic['name']} 최신 지표 기준 요약입니다.",
+            "body": body or f"{topic['name']} 최신 지표 기준 요약입니다.",
             "source": "FinBrief"}
 
 def _clean_source(s: str) -> str:
