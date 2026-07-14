@@ -95,6 +95,50 @@ def test_add_topic_ambiguous_recommends(monkeypatch):
     assert "토픽" in r["reply"]
 
 
+def test_add_topic_accepts_unique_aliases_and_normalized_names(monkeypatch):
+    """카탈로그에 있는 영문 alias/normalized_name도 바로 구독된다."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    cases = [
+        ("btc 구독", "topic_btc"),
+        ("nasdaq 구독", "topic_nasdaq"),
+        ("S&P500 구독", "topic_sp500"),
+        ("USD/KRW 구독", "topic_usdkrw"),
+        ("fed funds 구독", "topic_fed_funds"),
+    ]
+
+    for message, expected_topic_id in cases:
+        s = _svc()
+        r = chatbot.handle(s, "discord", f"alias_{expected_topic_id}", message, "c")
+        assert r["intent"] == "add_topic"
+        assert r["status"] == "completed"
+        assert r["topic"] == expected_topic_id
+
+
+def test_add_topic_keeps_ambiguous_alias_as_clarification(monkeypatch):
+    """여러 후보가 같은 강도로 맞는 표현은 자동 구독하지 않는다."""
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    r = chatbot.handle(_svc(), "discord", "ambiguous_alias", "달러 환율 구독", "c")
+
+    assert r["intent"] == "clarify_topic"
+    assert r["status"] == "blocked"
+    assert "후보" in r["reply"]
+
+
+def test_llm_intent_accepts_normalized_topic_name(monkeypatch):
+    """LLM이 표시명 대신 normalized_name을 반환해도 카탈로그 topic_id로 매핑한다."""
+    import app.core.llm as core_llm
+
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test")
+    monkeypatch.delenv("FINBRIEF_LLM_STUB", raising=False)
+    monkeypatch.setattr(core_llm, "chat_json", lambda sys, msg: {"intent": "add_topic", "topic": "btc"})
+
+    r = chatbot.handle(_svc(), "discord", "llm_alias", "비트코인 구독하고 싶어", "c")
+
+    assert r["intent"] == "add_topic"
+    assert r["status"] == "completed"
+    assert r["topic"] == "topic_btc"
+
+
 def test_delete_ambiguous_resolves_to_subscription(monkeypatch):
     """'환율 제거' 모호어 → 구독 중인 USD/KRW 하나로 해결해 제거."""
     monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")

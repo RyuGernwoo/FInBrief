@@ -9,7 +9,7 @@ from app.core import llm
 from app.agents.pipeline import get_latest_result
 from app.services import chatbot_responses as replies
 from app.services.chatbot_persona import is_investment_advice_request
-from app.services.chatbot_suggestions import suggest_topics, starter_topics
+from app.services.chatbot_suggestions import resolve_topic_id, suggest_topics, starter_topics
 from app.services.report_explainer import build_report_explanation
 from app.services.subscription_service import SubscriptionService, TopicNotAllowed, MaxTopicsExceeded
 
@@ -151,8 +151,11 @@ def _should_clarify_selected_topic(
     names: dict,
     topic_id: str | None,
     suggestions: list,
+    catalog: list | None = None,
 ) -> bool:
     if not topic_id or len(suggestions) <= 1:
+        return False
+    if catalog is not None and resolve_topic_id(message, catalog) == topic_id:
         return False
     topic_name = names.get(topic_id)
     if not topic_name:
@@ -162,9 +165,10 @@ def _should_clarify_selected_topic(
     return True
 
 
-def _rule_intent(message: str, names: dict) -> tuple[str, str | None]:
+def _rule_intent(message: str, catalog: list) -> tuple[str, str | None]:
     m = message.lower()
-    topic = next(
+    names = {t.topic_id: t.name for t in catalog}
+    topic = resolve_topic_id(message, catalog) or next(
         (tid for tid, nm in names.items() if _topic_matches(message, m, tid, nm)),
         None,
     )
@@ -198,11 +202,11 @@ def parse_intent(message: str, catalog: list) -> tuple[str, str | None]:
             intent = raw.get("intent", "unknown")
             topic = raw.get("topic")
             if topic and topic not in names:
-                topic = next((tid for tid, nm in names.items() if nm == topic), None)
+                topic = resolve_topic_id(str(topic), catalog) or next((tid for tid, nm in names.items() if nm == topic), None)
             return intent, topic
         except Exception:
             pass
-    return _rule_intent(message, names)
+    return _rule_intent(message, catalog)
 
 
 def _resp(intent, status, reply, topic=None):
@@ -242,8 +246,14 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         t = service.tier(channel, ext_user_id)
         return _resp(intent, "completed", replies.format_tier_status(t["tier"], t["used"], t["max_topics"]))
     if intent == "add_topic":
-        if _should_clarify_selected_topic(message, names, topic, suggestions):
+        if _should_clarify_selected_topic(message, names, topic, suggestions, catalog):
             return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
+        if not topic:
+            if suggestions:
+                if len(suggestions) == 1:
+                    topic = suggestions[0].topic_id
+                else:
+                    return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
         if not topic:
             if suggestions:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(suggestions))
