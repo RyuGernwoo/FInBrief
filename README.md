@@ -1,16 +1,19 @@
 # FinBrief 📊
 
-FinBrief는 사용자가 관심 있는 금융 토픽을 구독하면 실제 시장 지표와 경제 뉴스를 수집해 아침 브리핑으로 정리하는 AI 금융 브리핑 서비스입니다.
+사용자가 관심 있는 금융 토픽을 구독하면 실제 시장 지표와 경제 뉴스를 수집해 매일 아침 7시에 디스코드를 통한 이미지 전송 형태의 브리핑으로 정리해주는 AI 서비스입니다.
 
-사용자는 배포된 웹 화면이나 Discord 챗봇에서 관심 토픽을 관리하고, 전체 시장 리포트와 토픽별 카드뉴스를 확인할 수 있습니다. FinBrief는 투자 판단을 대신하지 않으며, 모든 결과는 참고용 정보로만 제공됩니다.
+사용자는 Discord 챗봇에서 관심 토픽을 관리할 수 있고, 매일 아침 전체 시장 리포트와 토픽별 카드 요약 뉴스를 받아 볼 수 있습니다. 
+
+FinBrief는 투자 판단을 대신하지 않으며, 모든 결과는 참고용 정보로만 제공됩니다.
 
 ---
 
-## 1. 일반 사용자용 안내
+## 1. 일반 사용자용 안내 👥
 
-이 영역은 FinBrief가 이미 배포되어 있고, 사용자는 서비스를 이용하기만 한다는 가정으로 설명합니다. 별도의 설치, API key, 서버 설정은 필요하지 않습니다.
+FinBrief가 이미 배포되어 있고, 사용자는 서비스를 이용하기만 한다는 가정으로 설명합니다. 
+별도의 설치, API key, 서버 설정은 필요하지 않습니다.
 
-### FinBrief로 할 수 있는 일
+### FinBrief로 할 수 있는 일 ⚙️
 
 | 기능 | 설명 |
 | --- | --- |
@@ -21,17 +24,15 @@ FinBrief는 사용자가 관심 있는 금융 토픽을 구독하면 실제 시�
 | 토픽별 카드뉴스 확인 | 내가 구독한 토픽에 대해 수치, 요약, 관련 뉴스 근거가 포함된 카드뉴스를 받습니다. |
 | 오늘 리포트 설명 요청 | 당일 리포트에서 변동이 큰 지표와 함께 봐야 할 뉴스 흐름을 설명받습니다. |
 
-### 웹 화면 이용
+### 웹 화면 이용 💻
 
-운영자가 안내한 FinBrief 웹 주소에 접속하면 다음 정보를 확인할 수 있습니다.
+[웹 주소](http://34.50.41.2:8000/)에 접속하면 다음 정보를 확인할 수 있습니다.
 
-- 오늘의 주요 지표 리포트
-- 구독 토픽별 카드뉴스
-- 리포트 설명과 참고 문구
+- FinBrief 세부 설명
+- FinBrief에 사용된 기술
+- FinBrief를 Discord에 등록하기
 
-웹 화면은 결과 확인용입니다. 토픽 구독과 삭제는 Discord 챗봇에서 진행하는 흐름을 기본으로 합니다.
-
-### Discord 챗봇 이용
+### Discord 챗봇 이용 📱
 
 Discord 서버에서 `/finbrief` 명령을 사용합니다.
 
@@ -46,7 +47,7 @@ Discord 서버에서 `/finbrief` 명령을 사용합니다.
 /finbrief message: 오늘 리포트에서 뭐 봐야 해?
 ```
 
-### 사용 예시
+### 사용 예시 💬
 
 | 사용자가 입력 | FinBrief가 하는 일 |
 | --- | --- |
@@ -56,22 +57,22 @@ Discord 서버에서 `/finbrief` 명령을 사용합니다.
 | `비트코인 취소해줘` | 비트코인 토픽을 구독 목록에서 제거합니다. |
 | `오늘 리포트에서 뭐 봐야 해?` | 당일 지표 리포트에서 크게 움직인 지표와 관련 뉴스 흐름을 설명합니다. |
 
-### 결과를 읽는 방법
+### 결과를 읽는 방법 📊
 
-주요 지표 리포트는 시장 전체를 빠르게 훑기 위한 이미지입니다.
+**주요 지표 리포트**는 시장 전체를 빠르게 훑기 위한 이미지입니다.
 
 - 지수, 금리, 원자재, 환율 등 핵심 지표를 한 장에 표시합니다.
 - 상승과 하락 방향, 변화폭, 단위를 함께 확인합니다.
 - 일부 데이터가 부족하면 가능한 값만 표시하고, 잘못된 값은 그대로 확정하지 않습니다.
 
-토픽별 카드뉴스는 내가 구독한 주제만 따로 정리한 결과입니다.
+**토픽별 카드뉴스**는 내가 구독한 주제만 따로 정리한 결과입니다.
 
 - 토픽 이름과 핵심 요약
 - 관련 지표 또는 가격 변화
 - RSS 뉴스 기반 근거
 - 투자 조언이 아니라는 안내 문구
 
-### 꼭 알아둘 점
+### 꼭 알아둘 점 ⚠️
 
 - FinBrief는 투자 조언 서비스가 아닙니다.
 - 매수, 매도, 목표가, 수익 보장 같은 투자 판단은 제공하지 않습니다.
@@ -80,11 +81,11 @@ Discord 서버에서 `/finbrief` 명령을 사용합니다.
 
 ---
 
-## 2. 외부 개발자용 안내
+## 2. 외부 개발자용 안내 🛠️
 
 이 영역은 FinBrief를 로컬에서 실행하거나, 구조를 이해하거나, 배포 환경을 구성하려는 개발자를 위한 설명입니다.
 
-### 프로젝트 개요
+### 프로젝트 개요 🏗️
 
 FinBrief는 FastAPI 기반 백엔드와 LangGraph 에이전트 파이프라인으로 구성됩니다. 외부 데이터 소스에서 금융 지표와 뉴스를 수집하고, Supabase PostgreSQL과 pgvector에 저장한 뒤, RAG 검색과 LLM 분석을 통해 리포트와 카드뉴스를 생성합니다.
 
@@ -101,7 +102,7 @@ FinBrief는 FastAPI 기반 백엔드와 LangGraph 에이전트 파이프라인�
   -> Langfuse 관측성 기록
 ```
 
-### 기술 스택
+### 기술 스택 💻
 
 | 영역 | 사용 기술 |
 | --- | --- |
@@ -115,7 +116,7 @@ FinBrief는 FastAPI 기반 백엔드와 LangGraph 에이전트 파이프라인�
 | Bot/Delivery | Discord.py |
 | Infra | Docker, Docker Compose, GitHub Actions, GCE |
 
-### 사전 준비
+### 사전 준비 📋
 
 실데이터 실행에는 다음 외부 리소스가 필요합니다.
 
@@ -142,7 +143,7 @@ Supabase SQL Editor에서 먼저 실행합니다.
 -- schemas/seed_topics.sql 전체 실행
 ```
 
-### 환경변수
+### 환경변수 ⚙️
 
 `.env.example`을 복사한 뒤 실제 값을 채웁니다. 실제 secret은 Git에 커밋하지 않습니다.
 
@@ -172,7 +173,7 @@ Copy-Item .env.example .env
 | `FINBRIEF_FONT` | 한글 리포트 렌더링용 폰트 경로 |
 | `SERVICE_PORT` | Docker Compose 노출 포트. 기본값 `8000` |
 
-### 로컬 실행
+### 로컬 실행 💻
 
 Windows PowerShell 기준입니다.
 
@@ -195,7 +196,7 @@ python -m uvicorn app.main:app --reload
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - Health check: `http://127.0.0.1:8000/api/v1/health`
 
-### 주요 API
+### 주요 API 🔑
 
 토픽 목록 조회:
 
@@ -247,7 +248,7 @@ curl "http://127.0.0.1:8000/api/v1/reports/today/explanation?run_date=2026-07-14
 curl "http://127.0.0.1:8000/api/v1/cards/today?user_id=demo-user&run_date=2026-07-14"
 ```
 
-### Discord bot 실행
+### Discord bot 실행 🤖
 
 Discord Developer Portal에서 bot token, guild id, message content intent, `applications.commands` scope를 확인합니다.
 
@@ -257,7 +258,7 @@ python -m app.services.discord_bot
 
 Supabase 연결이 설정되어 있으면 구독 상태는 DB에 저장됩니다.
 
-### 배치와 스케줄러
+### 배치와 스케줄러 ⏰
 
 전체 시장 리포트와 구독 토픽 카드 생성을 한 번 실행합니다.
 
@@ -279,7 +280,7 @@ FINBRIEF_BATCH_MINUTE=0
 FINBRIEF_RUN_ON_START=1
 ```
 
-### Docker 실행
+### Docker 실행 🐳
 
 Docker Desktop 또는 Docker Engine이 실행 중이어야 합니다.
 
@@ -303,7 +304,7 @@ Compose에는 세 가지 서비스가 포함됩니다.
 | `finbrief-bot` | Discord 챗봇 실행 |
 | `finbrief-scheduler` | 매일 아침 배치 실행 |
 
-### CI/CD
+### CI/CD 🚀
 
 GitHub Actions는 테스트와 배포를 분리합니다.
 
@@ -316,7 +317,7 @@ GCE 배포를 사용하려면 GitHub repository secrets에 Supabase, 외부 API,
 
 수동 배포는 GitHub `Actions` -> `FinBrief CD` -> `Run workflow`에서 실행합니다.
 
-### 프로젝트 구조
+### 프로젝트 구조 🏗️
 
 ```text
 app/
@@ -332,7 +333,7 @@ tests/             자동 테스트
 .github/workflows/ CI/CD workflow
 ```
 
-### 검증
+### 검증 🔍
 
 개발 중 기본 검증:
 
@@ -349,7 +350,7 @@ curl http://127.0.0.1:8000/api/v1/health
 curl http://127.0.0.1:8000/api/v1/topics
 ```
 
-### 운영 원칙
+### 운영 원칙 📋
 
 - 실제 secret은 `.env` 또는 GitHub Secrets에만 둡니다.
 - `.env`, private key, 생성 산출물은 Git에 커밋하지 않습니다.
