@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from app.core.schemas import (
+    BatchRunResult,
     CardArtifact,
     EvaluationResult,
     NewsDocument,
@@ -183,6 +184,57 @@ class MemoryEvaluationRepository:
         return [item for item in self._results if item.run_id == run_id]
 
 
+class MemoryReportRunRepository:
+    def __init__(self) -> None:
+        self._runs_by_id: dict[str, BatchRunResult] = {}
+        self._run_ids_by_date: dict[date, list[str]] = {}
+
+    def upsert(self, result: BatchRunResult) -> None:
+        self._runs_by_id[result.run_id] = result.model_copy(deep=True)
+        ids = self._run_ids_by_date.setdefault(result.run_date, [])
+        if result.run_id not in ids:
+            ids.append(result.run_id)
+
+    def get_by_run_id(self, run_id: str) -> BatchRunResult | None:
+        result = self._runs_by_id.get(run_id)
+        return result.model_copy(deep=True) if result is not None else None
+
+    def get_by_date(self, run_date: date) -> BatchRunResult | None:
+        ids = self._run_ids_by_date.get(run_date) or []
+        if not ids:
+            return None
+        return self.get_by_run_id(ids[-1])
+
+    def get_latest(self) -> BatchRunResult | None:
+        if not self._run_ids_by_date:
+            return None
+        return self.get_by_date(max(self._run_ids_by_date))
+
+
+class MemoryReportExplanationRepository:
+    def __init__(self) -> None:
+        self._payloads: dict[str, dict[str, object]] = {}
+
+    def get_by_run_id(self, run_id: str) -> dict[str, object] | None:
+        payload = self._payloads.get(run_id)
+        return dict(payload) if payload is not None else None
+
+    def upsert(self, run_id: str, payload: dict[str, object]) -> None:
+        self._payloads[run_id] = dict(payload)
+
+
+class MemoryCardSourceExplanationRepository:
+    def __init__(self) -> None:
+        self._payloads: dict[tuple[str, date], dict[str, object]] = {}
+
+    def get(self, topic_id: str, run_date: date) -> dict[str, object] | None:
+        payload = self._payloads.get((topic_id, run_date))
+        return dict(payload) if payload is not None else None
+
+    def upsert(self, topic_id: str, run_date: date, payload: dict[str, object]) -> None:
+        self._payloads[(topic_id, run_date)] = dict(payload)
+
+
 def load_default_topics(path: Path = DEFAULT_TOPICS_PATH) -> list[Topic]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     return [Topic.model_validate(item) for item in payload]
@@ -202,4 +254,7 @@ def create_memory_repositories(
         cards=MemoryCardRepository(),
         news=MemoryNewsRepository(news_documents),
         evals=MemoryEvaluationRepository(),
+        reports=MemoryReportRunRepository(),
+        report_explanations=MemoryReportExplanationRepository(),
+        card_source_explanations=MemoryCardSourceExplanationRepository(),
     )

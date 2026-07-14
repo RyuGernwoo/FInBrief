@@ -1,6 +1,8 @@
 from app.services import chatbot
 from app.services.subscription_service import SubscriptionService
 from app.repositories.memory import create_memory_repositories
+from app.core.schemas import CardArtifact, NewsEvidence, TopicAnalysis
+from datetime import date
 
 
 def _svc():
@@ -189,3 +191,45 @@ def test_explain_report_without_generated_report_guides_user(monkeypatch):
     assert r["status"] == "blocked"
     assert "리포트" in r["reply"]
     assert "생성" in r["reply"]
+
+
+def test_explain_card_sources_returns_sources_for_today_cards(monkeypatch):
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    repos = create_memory_repositories()
+    service = SubscriptionService(repos)
+    user_id = "card_source_user"
+    topic = repos.topics.get_by_normalized_name("btc")
+    service.add("discord", user_id, topic.topic_id, "channel")
+    run_date = date.today()
+    repos.cards.upsert(
+        CardArtifact(
+            card_id=f"card_{topic.topic_id}_{run_date:%Y%m%d}",
+            topic_id=topic.topic_id,
+            run_date=run_date,
+            title="비트코인 카드뉴스",
+            analysis=TopicAnalysis(
+                topic_id=topic.topic_id,
+                run_date=run_date,
+                headline="비트코인 흐름 점검",
+                summary="ETF 자금 흐름을 봅니다.",
+                key_points=["ETF 자금 흐름"],
+                evidence=[
+                    NewsEvidence(
+                        news_id="news_btc",
+                        title="비트코인 ETF 자금 유입",
+                        source="연합뉴스",
+                        url="https://example.com/btc",
+                        similarity=0.9,
+                        snippet="ETF 자금 유입이 이어졌습니다.",
+                    )
+                ],
+            ),
+        )
+    )
+
+    r = chatbot.handle(service, "discord", user_id, "오늘 카드뉴스 출처 알려줘", "channel")
+
+    assert r["intent"] == "explain_card_sources"
+    assert r["status"] == "completed"
+    assert "연합뉴스" in r["reply"]
+    assert "출처" in r["reply"]

@@ -184,6 +184,7 @@ class AdminCommandResponse(StrictModel):
         "help",
         "recommend_topics",
         "explain_report",
+        "explain_card_sources",
         "clarify_topic",
         "unknown",
     ]

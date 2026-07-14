@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.agents.pipeline import get_latest_result, run_morning_pipeline
+from app.agents.pipeline import run_morning_pipeline
 from app.api.dependencies import (
     get_embedding_provider,
     get_ingestion_repository,
@@ -18,7 +18,8 @@ from app.core.schemas import BatchRunResult
 from app.core.evaluations import eval_summary
 from app.core.config import Settings, get_settings
 from app.repositories.protocols import RepositoryBundle
-from app.services.report_explainer import build_report_explanation
+from app.services.report_explanation_service import get_or_build_report_explanation
+from app.services.report_result_service import get_report_result
 from app.services.topic_ingestion import TopicIngestionOptions, TopicIngestionResult, ingest_topics
 
 
@@ -120,8 +121,9 @@ def run_report(
 @router.get("/reports/today")
 def get_today_report(
     run_date: date | None = Query(default=None),
+    repos: RepositoryBundle = Depends(get_repository_bundle),
 ) -> dict[str, object]:
-    result = get_latest_result(run_date)
+    result = get_report_result(repos, run_date=run_date)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -134,12 +136,18 @@ def get_today_report(
 def get_today_report_explanation(
     run_date: date | None = Query(default=None),
     max_focus: int = Query(default=3, ge=1, le=5),
+    refresh: bool = Query(default=False),
     repos: RepositoryBundle = Depends(get_repository_bundle),
 ) -> dict[str, object]:
-    result = get_latest_result(run_date)
+    result = get_report_result(repos, run_date=run_date)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "REPORT_NOT_FOUND", "message": "No report has been generated."},
         )
-    return build_report_explanation(result, repos=repos, max_focus=max_focus)
+    return get_or_build_report_explanation(
+        repos,
+        result=result,
+        max_focus=max_focus,
+        refresh=refresh,
+    )

@@ -115,6 +115,38 @@ def format_report_not_generated_reply() -> str:
     )
 
 
+def format_card_sources_not_generated_reply() -> str:
+    return (
+        "🧾 아직 설명할 카드뉴스 출처가 없어요!\n\n"
+        "먼저 오늘 카드뉴스를 생성하거나 관심 토픽을 구독한 뒤 다시 물어봐 주세요."
+    )
+
+
+def format_card_sources_reply(payload: dict) -> str:
+    cards = list(payload.get("cards") or [])
+    if not cards:
+        return format_card_sources_not_generated_reply()
+
+    chunks = ["🧾 오늘 카드뉴스 출처를 정리했어요!"]
+    for card in cards:
+        topic_name = card.get("topic_name") or card.get("topic_id")
+        chunks.append(f"\n**{topic_name}**")
+        chunks.append(str(card.get("source_summary") or "연결된 출처를 확인했어요."))
+        sources = list(card.get("sources") or [])
+        if sources:
+            for idx, source in enumerate(sources[:3], start=1):
+                chunks.append(
+                    f"{idx}. {source.get('source')} - {source.get('title')}\n"
+                    f"   {source.get('url')}"
+                )
+        else:
+            chunks.append("아직 연결된 RSS/RAG 출처가 부족해요.")
+    disclaimer = payload.get("disclaimer")
+    if disclaimer:
+        chunks.append(f"\n{disclaimer}")
+    return "\n".join(chunks)
+
+
 def format_recommend_topics(suggestions: list[TopicSuggestion]) -> str:
     lines = [f"{idx}. {item.name}" for idx, item in enumerate(suggestions, start=1)]
     return (

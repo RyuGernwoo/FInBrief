@@ -9,11 +9,15 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+import math
 from typing import Any
 
 from app.core.schemas import (
+    BatchRunResult,
     CardArtifact,
+    DeliveryLog,
     EvaluationResult,
+    FullReport,
     IndicatorValue,
     NewsDocument,
     NewsEvidence,
@@ -41,6 +45,18 @@ def _require_one(data: Any, label: str) -> dict[str, Any]:
     if isinstance(data, list) and data:
         return data[0]
     raise RepositoryNotFoundError(f"{label} not found")
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 def _topic_from_row(row: dict[str, Any]) -> Topic:
@@ -439,6 +455,214 @@ class SupabaseEvaluationRepository:
         return [_evaluation_from_row(row) for row in _response_data(response)]
 
 
+def _report_run_row(result: BatchRunResult) -> dict[str, Any]:
+    report = result.report
+    indicators = [item.model_dump(mode="json") for item in report.indicators] if report else []
+    raw_payload = result.model_dump(mode="json")
+    return _json_safe(
+        {
+            "run_id": result.run_id,
+            "run_date": result.run_date.isoformat(),
+            "status": result.status,
+            "trace_id": result.trace_id,
+            "report_id": report.report_id if report else None,
+            "report_url": report.report_url if report else None,
+            "disclaimer": report.disclaimer if report else "본 브리핑은 투자 조언이 아닌 참고용 정보입니다.",
+            "indicators": indicators,
+            "missing_indicators": report.missing_indicators if report else [],
+            "generated_cards": len(result.generated_cards),
+            "delivery_results": len(result.delivery_results),
+            "eval_summary": {},
+            "errors": result.errors,
+            "raw_payload": raw_payload,
+        }
+    )
+
+
+def _report_result_from_row(row: dict[str, Any]) -> BatchRunResult:
+    raw_payload = row.get("raw_payload") or {}
+    if raw_payload:
+        try:
+            return BatchRunResult.model_validate(raw_payload)
+        except Exception:
+            pass
+
+    run_date = row["run_date"]
+    report = None
+    if row.get("report_id") or row.get("indicators"):
+        report = FullReport(
+            report_id=row.get("report_id") or f"report_{str(run_date).replace('-', '')}",
+            run_date=run_date,
+            indicators=[IndicatorValue.model_validate(item) for item in row.get("indicators") or []],
+            top_news=[],
+            missing_indicators=row.get("missing_indicators") or [],
+            report_url=row.get("report_url"),
+            disclaimer=row.get("disclaimer") or "본 브리핑은 투자 조언이 아닌 참고용 정보입니다.",
+        )
+    return BatchRunResult(
+        run_id=row["run_id"],
+        run_date=run_date,
+        status=row.get("status", "completed"),
+        report=report,
+        generated_cards=[],
+        delivery_results=[
+            DeliveryLog(
+                delivery_id=f"{row['run_id']}:delivery:{idx}",
+                user_id="unknown",
+                channel="discord",
+                status="sent",
+            )
+            for idx in range(int(row.get("delivery_results") or 0))
+        ],
+        trace_id=row.get("trace_id"),
+        errors=[str(item) for item in row.get("errors") or []],
+    )
+
+
+class SupabaseReportRunRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def upsert(self, result: BatchRunResult) -> None:
+        self._client.table("report_runs").upsert(
+            _report_run_row(result),
+            on_conflict="run_id",
+        ).execute()
+
+    def get_by_run_id(self, run_id: str) -> BatchRunResult | None:
+        response = self._client.table("report_runs").select("*").eq("run_id", run_id).execute()
+        data = _response_data(response)
+        if not data:
+            return None
+        return _report_result_from_row(data[0])
+
+    def get_by_date(self, run_date: date) -> BatchRunResult | None:
+        response = (
+            self._client.table("report_runs")
+            .select("*")
+            .eq("run_date", run_date.isoformat())
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        return _report_result_from_row(data[0])
+
+    def get_latest(self) -> BatchRunResult | None:
+        response = (
+            self._client.table("report_runs")
+            .select("*")
+            .order("run_date", desc=True)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        return _report_result_from_row(data[0])
+
+
+class SupabaseReportExplanationRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def get_by_run_id(self, run_id: str) -> dict[str, object] | None:
+        response = (
+            self._client.table("report_explanations")
+            .select("*")
+            .eq("run_id", run_id)
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        row = data[0]
+        return {
+            "run_id": row["run_id"],
+            "run_date": row["run_date"],
+            "trace_id": row.get("trace_id"),
+            "explanation_trace_id": row.get("explanation_trace_id"),
+            "summary": row.get("summary"),
+            "reply": row.get("reply"),
+            "focus_items": row.get("focus_items") or [],
+            "disclaimer": row.get("disclaimer"),
+            "source": row.get("source", "rss_rag"),
+        }
+
+    def upsert(self, run_id: str, payload: dict[str, object]) -> None:
+        row = _json_safe(
+            {
+                "run_id": run_id,
+                "run_date": payload.get("run_date"),
+                "trace_id": payload.get("trace_id"),
+                "explanation_trace_id": payload.get("explanation_trace_id"),
+                "summary": payload.get("summary") or "",
+                "reply": payload.get("reply") or "",
+                "focus_items": payload.get("focus_items") or [],
+                "disclaimer": payload.get("disclaimer") or "본 브리핑은 투자 조언이 아닌 참고용 정보입니다.",
+                "source": payload.get("source") or "rss_rag",
+            }
+        )
+        self._client.table("report_explanations").upsert(row, on_conflict="run_id").execute()
+
+
+class SupabaseCardSourceExplanationRepository:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def get(self, topic_id: str, run_date: date) -> dict[str, object] | None:
+        response = (
+            self._client.table("card_source_explanations")
+            .select("*")
+            .eq("topic_id", topic_id)
+            .eq("run_date", run_date.isoformat())
+            .execute()
+        )
+        data = _response_data(response)
+        if not data:
+            return None
+        row = data[0]
+        return {
+            "topic_id": row["topic_id"],
+            "run_date": row["run_date"],
+            "card_id": row.get("card_id"),
+            "trace_id": row.get("trace_id"),
+            "explanation_trace_id": row.get("explanation_trace_id"),
+            "topic_name": row.get("topic_name"),
+            "source_summary": row.get("source_summary"),
+            "reply": row.get("reply"),
+            "sources": row.get("sources") or [],
+            "evidence_count": row.get("evidence_count", 0),
+            "disclaimer": row.get("disclaimer"),
+            "source": row.get("source", "card_evidence_rag"),
+        }
+
+    def upsert(self, topic_id: str, run_date: date, payload: dict[str, object]) -> None:
+        row = _json_safe(
+            {
+                "topic_id": topic_id,
+                "run_date": run_date.isoformat(),
+                "card_id": payload.get("card_id"),
+                "trace_id": payload.get("trace_id"),
+                "explanation_trace_id": payload.get("explanation_trace_id"),
+                "topic_name": payload.get("topic_name") or topic_id,
+                "source_summary": payload.get("source_summary") or "",
+                "reply": payload.get("reply") or "",
+                "sources": payload.get("sources") or [],
+                "evidence_count": payload.get("evidence_count") or 0,
+                "disclaimer": payload.get("disclaimer") or "본 브리핑은 투자 조언이 아닌 참고용 정보입니다.",
+                "source": payload.get("source") or "card_evidence_rag",
+            }
+        )
+        self._client.table("card_source_explanations").upsert(
+            row,
+            on_conflict="topic_id,run_date",
+        ).execute()
+
+
 @dataclass(slots=True)
 class SupabaseRepositories(RepositoryBundle):
     pass
@@ -457,4 +681,7 @@ def create_supabase_repositories(
         cards=SupabaseCardRepository(runtime_client),
         news=SupabaseNewsRepository(runtime_client, query_embedding_provider),
         evals=SupabaseEvaluationRepository(runtime_client),
+        reports=SupabaseReportRunRepository(runtime_client),
+        report_explanations=SupabaseReportExplanationRepository(runtime_client),
+        card_source_explanations=SupabaseCardSourceExplanationRepository(runtime_client),
     )
