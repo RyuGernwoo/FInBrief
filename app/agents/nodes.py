@@ -583,6 +583,35 @@ def _local_analysis(topic: dict, data: dict, news: list[dict]) -> dict:
             "body": body or f"{topic['name']} 최신 지표 기준 요약입니다.",
             "source": "FinBrief"}
 
+def _topic_in_evidence(topic: dict, news: list[dict]) -> bool:
+    """근거 뉴스가 이 토픽을 실제로 다루는지 판정: 토픽명/식별키가 근거 제목·본문에
+    등장하면 관련. 'GPU' 같은 느슨한 부수 키워드가 아니라 토픽명 자체로 봐 과잉발동 방지."""
+    terms = [str(topic.get("name") or "").strip(), str(topic.get("source_key") or "").strip()]
+    terms = [t for t in terms if len(t) >= 2]
+    if not terms:
+        return True   # 판정 불가 시 통과(가드 미적용)
+    text = " ".join(f"{n.get('title','')} {n.get('snippet','')}" for n in (news or [])).lower()
+    return any(t.lower() in text for t in terms)
+
+
+def _grounded_fallback(topic: dict, data: dict, news: list[dict]) -> tuple[str, str]:
+    """관련성 가드 발동 시(근거가 토픽과 무관) 근거 없는 단정 대신 '지표 사실' 헤드라인/리드로 대체.
+    지표값이 있으면 값·변화율 기반, 없으면 최상위 근거 뉴스 제목을 사용(실제 사실)."""
+    name = str(topic.get("name") or "")
+    unit = _display_unit(topic, data)
+    val = _fmt_value(data.get("value"), unit)
+    chg = data.get("change_pct")
+    if val:
+        arrow = "↑" if (chg or 0) > 0 else ("↓" if (chg or 0) < 0 else "")
+        head = _clip_head(f"{name} {val}{unit}", 20)
+        lead = _clip(f"{name} 현재 {val}{unit}, 전일 대비 {_fmt_pct(chg)}%{arrow}", 45)
+        return head, lead
+    top = (news or [{}])[0]
+    head = _clip_head(str(top.get("title") or name), 20)
+    lead = _clip(str(top.get("title") or name), 45)
+    return head, lead
+
+
 def _clean_source(s: str) -> str:
     """RSS 피드 제목을 언론사명으로 정리. '매일경제 : 증권'->'매일경제', '경제 | JTBC News'->'JTBC News'."""
     s = str(s).strip()
@@ -634,12 +663,19 @@ def _analyze(
     else:
         raw = _local_analysis(topic, data, news)
 
+    headline = _clip_head(raw.get("headline", topic["name"]), 20)
+    lead = _clip(raw.get("lead", ""), 45)
+    # 관련성 가드: 근거 뉴스에 토픽명이 전혀 없으면(무관한 근거) 토픽을 단정하는
+    # 헤드라인/리드를 근거 기반 사실(지표값·실뉴스 제목)로 대체 → 근거 없는 주장 방지.
+    if news and not _topic_in_evidence(topic, news):
+        headline, lead = _grounded_fallback(topic, data, news)
+
     card = CardContent(
         category=topic["category"],
         index_no="00",
         subtitle=_clip(topic["name"], 20),
-        headline=_clip_head(raw.get("headline", topic["name"]), 20),
-        lead=_clip(raw.get("lead", ""), 45),
+        headline=headline,
+        lead=lead,
         body=_clip_body(raw.get("body", ""), 240),
         source=_evidence_source(news) or raw.get("source", "FinBrief"),
         evidence=news,
