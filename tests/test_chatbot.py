@@ -1,8 +1,11 @@
+from datetime import date
+
+import pytest
+
+from app.core.schemas import CardArtifact, NewsEvidence, TopicAnalysis
+from app.repositories.memory import create_memory_repositories
 from app.services import chatbot
 from app.services.subscription_service import SubscriptionService
-from app.repositories.memory import create_memory_repositories
-from app.core.schemas import CardArtifact, NewsEvidence, TopicAnalysis
-from datetime import date
 
 
 def _svc():
@@ -233,3 +236,68 @@ def test_explain_card_sources_returns_sources_for_today_cards(monkeypatch):
     assert r["status"] == "completed"
     assert "연합뉴스" in r["reply"]
     assert "출처" in r["reply"]
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_intent"),
+    [
+        ("명령어 알려줘", "help"),
+        ("처음 쓰는데 어떻게 해?", "help"),
+        ("요즘 뭐 보면 좋아?", "recommend_topics"),
+        ("추천 토픽 보여줘", "recommend_topics"),
+        ("나스닥 알림 켜줘", "add_topic"),
+        ("비트코인 챙겨줘", "add_topic"),
+        ("환율은 이제 안 볼래", "delete_topic"),
+        ("나스닥 알림 꺼줘", "delete_topic"),
+        ("내가 뭐 보고 있지?", "list_topics"),
+        ("구독 현황 보여줘", "list_topics"),
+        ("몇 개 더 구독할 수 있어?", "tier_status"),
+        ("내 한도 알려줘", "tier_status"),
+        ("오늘 시장 요약해줘", "explain_report"),
+        ("오늘 뭐가 제일 중요해?", "explain_report"),
+        ("변동 큰 지표 해설해줘", "explain_report"),
+        ("출처 설명해줘", "explain_card_sources"),
+        ("근거 기사 보여줘", "explain_card_sources"),
+        ("어떤 기사 참고했어?", "explain_card_sources"),
+        ("나스닥 카드뉴스 왜 이렇게 썼어?", "explain_card_sources"),
+    ],
+)
+def test_rule_intent_recognizes_expanded_natural_triggers(monkeypatch, message, expected_intent):
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    intent, _ = chatbot.parse_intent(message, _svc().catalog())
+
+    assert intent == expected_intent
+
+
+def test_unknown_reply_uses_llm_answer_with_real_feature_context(monkeypatch):
+    import app.core.llm as core_llm
+
+    calls = []
+
+    def fake_chat_json(system, message, **kwargs):
+        calls.append((system, message, kwargs))
+        if "의도 분류기" in system:
+            return {"intent": "unknown", "topic": None}
+        if "토픽 추천기" in system:
+            return {"topics": []}
+        if "FinBrief 기능 안내" in system:
+            assert "토픽 구독" in system
+            assert "리포트 설명" in system
+            assert "카드뉴스 출처 설명" in system
+            return {
+                "reply": "환율 흐름이 궁금하다면 USD/KRW 환율을 구독하거나 오늘 시장 요약을 요청해 보세요!",
+                "suggested_intent": "add_topic",
+            }
+        return {}
+
+    monkeypatch.setenv("UPSTAGE_API_KEY", "test")
+    monkeypatch.delenv("FINBRIEF_LLM_STUB", raising=False)
+    monkeypatch.setattr(core_llm, "chat_json", fake_chat_json)
+
+    response = chatbot.handle(_svc(), "discord", "unknown_llm_user", "환율이 왜 움직였어?")
+
+    assert response["intent"] == "unknown"
+    assert response["status"] == "blocked"
+    assert "USD/KRW 환율" in response["reply"]
+    assert "오늘 시장 요약" in response["reply"]
+    assert any("FinBrief 기능 안내" in system for system, _, _ in calls)

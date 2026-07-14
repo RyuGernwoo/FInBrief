@@ -29,6 +29,14 @@ RECOMMEND_SYSTEM = (
     '최대 5개 골라 JSON {"topics": ["정확한 카탈로그명", ...]} 로만 답한다. 카탈로그 밖 이름 금지.'
 )
 
+UNKNOWN_REPLY_SYSTEM = (
+    "너는 FinBrief 기능 안내 챗봇이다. 사용자의 말이 현재 구현된 기능 intent로 정확히 분류되지 않았을 때만 답한다. "
+    "반드시 실제 구현 기능 안에서만 안내하고, 투자 판단/매수/매도 조언은 하지 않는다. "
+    "지원 기능: 토픽 구독(add_topic), 목록 조회(list_topics), 구독 취소(delete_topic), 티어 확인(tier_status), 추천 토픽(recommend_topics), 당일 지표 리포트 설명(explain_report), 카드뉴스 출처 설명(explain_card_sources). "
+    'JSON 키: {"reply": "사용자 질문에 대한 1~3문장 자연어 답변", '
+    '"suggested_intent": "add_topic|list_topics|delete_topic|tier_status|recommend_topics|explain_report|explain_card_sources|unknown"}'
+)
+
 _TYPE_LABEL = {"indicator": "지표", "asset": "자산", "sector": "섹터", "keyword": "키워드"}
 _TYPE_ORDER = ["indicator", "asset", "sector", "keyword"]
 
@@ -161,6 +169,61 @@ def recommend_from_subs(
         return rest[:k]
 
 
+def _llm_unknown_reply(
+    message: str,
+    catalog: list,
+    suggestions: list,
+    *,
+    trace_id: str | None = None,
+    turn_id: str | None = None,
+) -> dict[str, str] | None:
+    if not llm.use_llm():
+        return None
+    try:
+        feature_context = {
+            "available_features": [
+                "토픽 구독",
+                "목록 조회",
+                "구독 취소",
+                "티어 확인",
+                "추천 토픽",
+                "리포트 설명",
+                "카드뉴스 출처 설명",
+            ],
+            "candidate_topics": [item.name for item in suggestions],
+            "catalog_examples": [topic.name for topic in catalog[:12]],
+        }
+        metadata = chatobs.build_chatbot_llm_metadata(
+            trace_id=trace_id,
+            turn_id=turn_id,
+            node="chatbot.unknown_reply",
+            message=message,
+            extra={
+                "catalog_count": len(catalog),
+                "suggestion_count": len(suggestions),
+            },
+        )
+        raw = _chat_json(
+            UNKNOWN_REPLY_SYSTEM,
+            json.dumps(
+                {
+                    "user_message": message,
+                    "feature_context": feature_context,
+                    "reply_policy": "질문 의도를 짧게 받아주고, 바로 사용할 수 있는 FinBrief 기능 문장으로 유도한다.",
+                },
+                ensure_ascii=False,
+            ),
+            metadata=metadata,
+        )
+        reply = str(raw.get("reply") or "").strip()
+        if not reply:
+            return None
+        suggested_intent = str(raw.get("suggested_intent") or "unknown").strip()
+        return {"reply": reply, "suggested_intent": suggested_intent}
+    except Exception:
+        return None
+
+
 def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
@@ -207,34 +270,64 @@ def _should_clarify_selected_topic(
 
 def _rule_intent(message: str, catalog: list) -> tuple[str, str | None]:
     m = message.lower()
+    compact = re.sub(r"\s+", "", message)
     names = {t.topic_id: t.name for t in catalog}
     topic = resolve_topic_id(message, catalog) or next(
         (tid for tid, nm in names.items() if _topic_matches(message, m, tid, nm)),
         None,
     )
-    if any(k in message for k in ("도움말", "사용법", "뭐 할 수", "뭘 할 수")) or "help" in m:
-        return "help", None
-    if any(k in message for k in ("추천", "뭐 받아", "인기", "처음")):
-        return "recommend_topics", None
+
     if (
-        any(k in message for k in ("카드뉴스", "카드 뉴스", "카드"))
-        and any(k in message for k in ("출처", "근거", "기사", "참고"))
+        any(k in message for k in ("도움말", "사용법", "명령어", "가이드", "기능", "뭐 할 수", "뭘 할 수"))
+        or "help" in m
+        or ("처음" in message and any(k in message for k in ("어떻게", "사용", "시작", "써")))
+    ):
+        return "help", None
+
+    if (
+        any(k in message for k in ("출처", "근거", "참고", "기사", "어디서", "왜 이렇게"))
+        and not any(k in message for k in ("삭제", "제거", "취소", "해지"))
     ):
         return "explain_card_sources", topic
+
     if (
-        any(k in message for k in ("리포트", "시장 설명", "지표 설명", "변동 큰", "집중해서"))
+        any(k in message for k in ("티어", "등급", "요금", "개수", "한도", "제한", "몇 개", "몇개", "남은"))
+        or "limit" in m
+    ):
+        return "tier_status", None
+
+    if (
+        any(k in message for k in ("목록", "내 토픽", "내토픽", "조회", "리스트", "현황", "뭐 보고", "보고 있", "구독 중", "구독중"))
+        or "list" in m
+    ):
+        return "list_topics", None
+
+    if (
+        any(k in message for k in ("삭제", "제거", "취소", "해지", "빼", "지워", "안 볼", "안볼", "그만", "꺼줘", "끄기", "해제"))
+        or any(k in m for k in ("remove", "delete", "off"))
+    ):
+        return "delete_topic", topic
+
+    if (
+        any(k in message for k in ("추천", "뭐 받아", "뭐받아", "인기", "처음", "뭐 보면", "뭐보면", "뭘 보면", "골라줘"))
+        or "recommend" in m
+    ):
+        return "recommend_topics", None
+
+    if (
+        any(k in message for k in ("리포트", "시장 설명", "지표 설명", "변동 큰", "집중해서", "시장 요약", "요약해", "중요", "핵심", "해설", "브리핑 설명"))
         or "report" in m
         or all(k in message for k in ("오늘", "뭐", "봐야"))
+        or ("오늘" in message and any(k in message for k in ("시장", "요약", "중요", "핵심", "변동")))
     ):
         return "explain_report", None
-    if any(k in message for k in ("추가", "구독", "등록")) or "add" in m:
+
+    if (
+        any(k in message for k in ("추가", "구독", "등록", "알림 켜", "켜줘", "받아볼", "받고 싶", "챙겨줘", "팔로우", "추적", "관심"))
+        or any(k in m for k in ("add", "follow", "subscribe", "on"))
+        or any(k in compact for k in ("알림켜", "받아볼래", "챙겨줘"))
+    ):
         return "add_topic", topic
-    if any(k in message for k in ("삭제", "제거", "취소", "해지", "빼", "지워")) or any(k in m for k in ("remove", "delete")):
-        return "delete_topic", topic
-    if any(k in message for k in ("목록", "내 토픽", "내토픽", "조회", "리스트")) or "list" in m:
-        return "list_topics", None
-    if any(k in message for k in ("티어", "등급", "요금", "개수")):
-        return "tier_status", None
     return "unknown", topic
 
 
@@ -512,10 +605,25 @@ def _handle_core(
                      f"앗, '{names.get(topic, topic)}'는 현재 구독 목록에 없어요!\n현재 구독: {subscribed}")
 
     reco = recommend_topics(message, catalog, trace_id=trace_id, turn_id=turn_id)
-    reply = f"{replies.format_unknown_reply()}\n🗂️ 구독 가능 예시: {cats}"
+    llm_reply = _llm_unknown_reply(
+        message,
+        catalog,
+        suggestions,
+        trace_id=trace_id,
+        turn_id=turn_id,
+    )
+    reply = f"{replies.format_unknown_reply(llm_reply.get('reply') if llm_reply else None)}\n🗂️ 구독 가능 예시: {cats}"
     if reco:
         reply += f"\n💡 관심사에 맞춰 추천: {', '.join(reco)}"
-    return _resp("unknown", "blocked", reply)
+    return _resp(
+        "unknown",
+        "blocked",
+        reply,
+        trace_metadata={
+            "unknown_llm_answered": bool(llm_reply),
+            "unknown_suggested_intent": llm_reply.get("suggested_intent") if llm_reply else None,
+        },
+    )
 
 
 def handle(service: SubscriptionService, channel: str, ext_user_id: str, message: str,
