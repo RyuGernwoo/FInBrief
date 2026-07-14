@@ -13,17 +13,19 @@ from datetime import date, datetime, time, timedelta, timezone
 from app.core.schemas import NewsEvidence
 
 
-RAG_SINCE_DAYS = 3
+RAG_SINCE_DAYS = 0   # 당일만 탐색(어제 뉴스 제외). KST 자정 기준.
 RAG_K = 5
 RAG_CANDIDATES = 40   # match_news 에서 넓게 받아오고, postprocess 가 RAG_K 로 컷
 RAG_MIN_SIMILARITY = 0.2
 RAG_MAX_PER_SOURCE = 2
 
+KST = timezone(timedelta(hours=9))
+
 
 def since_for(run_date: date, *, days: int = RAG_SINCE_DAYS) -> datetime:
-    """Return the UTC lower bound for news retrieval given a run date."""
+    """뉴스 검색 하한(KST 기준). days=0 이면 해당 KST 날짜 자정 → 당일 뉴스만."""
 
-    base = datetime.combine(run_date, time.min, tzinfo=timezone.utc)
+    base = datetime.combine(run_date, time.min, tzinfo=KST)
     return base - timedelta(days=days)
 
 
