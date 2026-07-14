@@ -20,6 +20,23 @@ def test_rule_intent_persists_channel_id(monkeypatch):
     assert any(x.topic_id == topic.topic_id and x.discord_channel_id == "12345" for x in subs)
 
 
+def test_add_topic_success_reply_lists_current_subscriptions(monkeypatch):
+    monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
+    s = _svc()
+    catalog = s.catalog()
+    first = catalog[0]
+    nasdaq = next(t for t in catalog if t.normalized_name == "nasdaq")
+    s.add("discord", "u_subs", first.topic_id, "123")
+
+    r = chatbot.handle(s, "discord", "u_subs", "nasdaq 구독", "123")
+
+    assert r["intent"] == "add_topic"
+    assert r["status"] == "completed"
+    assert "현재 구독 토픽" in r["reply"]
+    assert first.name in r["reply"]
+    assert nasdaq.name in r["reply"]
+
+
 def test_rule_intent_unknown_topic_blocked(monkeypatch):
     monkeypatch.setenv("FINBRIEF_LLM_STUB", "1")
     r = chatbot.handle(_svc(), "discord", "u1", "존재하지않는토픽 구독")

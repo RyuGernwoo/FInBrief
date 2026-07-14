@@ -123,11 +123,10 @@ def recommend_from_subs(cur: list, catalog: list, k: int = 3) -> list[str]:
 def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
-    return ("👋 **브리핑 메이트**가 도착했어요! 관심 지표를 고르면 매일 아침 7시에 카드뉴스로 신나게 챙겨드릴게요 🚀\n"
-            "• 구독:  `나스닥 구독해줘`  또는  `/finbrief 나스닥 구독`  (저를 @멘션해도 좋아요!)\n"
-            "• 조회:  `내 토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n"
-            f"• 구독 가능(예시): {cats}\n"
-            "관심사만 편하게 던져주세요! 예) `반도체랑 AI 소식 받고 싶어` ✨")
+    return ("👋 **브리핑 메이트 FinBrief**가 도착했어요!\n관심 금융 지표를 고르면 매일 아침 7시에 카드뉴스로 챙겨드릴게요 🚀\n\n"
+            "• 구독:  `@finbrief 나스닥 구독해줘`  또는  `/finbrief 나스닥 추가`  (저를 멘션해도 좋아요!)\n\n"
+            "• 조회:  `토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n\n"
+            f"• 구독 가능(예시): {cats}\n\n")
 
 
 def _message_tokens(message: str) -> set[str]:
@@ -263,10 +262,16 @@ def handle(service: SubscriptionService, channel: str, ext_user_id: str, message
         try:
             cur = service.add(channel, ext_user_id, topic, channel_id)
             tier = service.tier(channel, ext_user_id)
+            current_topics = [names.get(item.topic_id, item.topic_id) for item in cur]
             return _resp(
                 intent,
                 "completed",
-                replies.format_add_success(names.get(topic, topic), len(cur), tier["max_topics"]),
+                replies.format_add_success(
+                    names.get(topic, topic),
+                    len(cur),
+                    tier["max_topics"],
+                    current_topics,
+                ),
                 topic,
             )
         except TopicNotAllowed:
