@@ -38,7 +38,17 @@ MARKET_REPORT_SLOTS: tuple[ReportIndicatorSlot, ...] = (
     ReportIndicatorSlot(17, "us10y", "미국채(10년)", "us_bond", "fred", "%", 4, 4, ("DGS10", "topic_us10y")),
     ReportIndicatorSlot(18, "jp10y", "일국채(10년)", "jp_bond", "fred", "%", 4, 4, ("topic_jp10y",)),
     ReportIndicatorSlot(19, "kr_policy_rate", "한국 기준금리", "kr", "ecos", "%", 2, 2, ("topic_kr_policy_rate",)),
-    ReportIndicatorSlot(20, "us_policy_rate", "미국 기준금리", "us", "fred", "%", 2, 2, ("us_rate", "topic_us_rate")),
+    ReportIndicatorSlot(
+        20,
+        "us_policy_rate",
+        "미국 기준금리",
+        "us",
+        "fred",
+        "%",
+        2,
+        2,
+        ("FEDFUNDS", "fed_funds", "topic_fed_funds"),
+    ),
     ReportIndicatorSlot(21, "eu_policy_rate", "유럽 기준금리", "eu", "fred", "%", 2, 2, ("topic_eu_policy_rate",)),
 )
 

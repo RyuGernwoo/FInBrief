@@ -8,10 +8,13 @@ from app.agents.report_render import build_indicator_views, render_market_report
 
 def test_market_report_catalog_has_21_unique_slots():
     positions = [slot.position for slot in MARKET_REPORT_SLOTS]
+    aliases = {slot.indicator_id: set(slot.aliases) for slot in MARKET_REPORT_SLOTS}
 
     assert len(MARKET_REPORT_SLOTS) == 21
     assert positions == list(range(1, 22))
     assert len({slot.indicator_id for slot in MARKET_REPORT_SLOTS}) == 21
+    assert "topic_fed_funds" in aliases["us_policy_rate"]
+    assert "topic_us_rate" not in aliases["us_policy_rate"]
 
 
 def test_build_indicator_views_maps_values_and_missing_slots():
@@ -42,6 +45,48 @@ def test_build_indicator_views_maps_values_and_missing_slots():
     assert kosdaq["display_name"] == "코스닥"
     assert kosdaq["missing"] is True
     assert kosdaq["direction"] == "flat"
+
+
+def test_build_indicator_views_treats_nan_as_missing_and_formats_units():
+    views = build_indicator_views(
+        [
+            {
+                "indicator_id": "shanghai",
+                "name": "상해종합",
+                "value": float("nan"),
+                "prev": 3200.0,
+                "unit": "pt",
+                "source": "fixture",
+            },
+            {
+                "indicator_id": "btc",
+                "name": "비트코인",
+                "value": 63138.0,
+                "prev": 62087.99,
+                "change_pct": 1.69,
+                "unit": "USD",
+                "source": "fixture",
+            },
+            {
+                "indicator_id": "us_policy_rate",
+                "name": "미국 기준금리",
+                "value": 3.75,
+                "prev": 3.75,
+                "unit": "%",
+                "source": "fixture",
+            },
+        ]
+    )
+
+    shanghai = next(view for view in views if view["indicator_id"] == "shanghai")
+    btc = next(view for view in views if view["indicator_id"] == "btc")
+    us_policy_rate = next(view for view in views if view["indicator_id"] == "us_policy_rate")
+
+    assert shanghai["missing"] is True
+    assert shanghai["current_value"] is None
+    assert shanghai["value_text"] == "N/A"
+    assert btc["value_text"] == "63,138.00 USD"
+    assert us_policy_rate["value_text"] == "3.75 %"
 
 
 def test_render_market_report_image_creates_1080_png(tmp_path):

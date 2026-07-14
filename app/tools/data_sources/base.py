@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
@@ -52,9 +53,10 @@ def to_float(value: object) -> float | None:
     if not text or text == ".":
         return None
     try:
-        return float(text)
+        numeric = float(text)
     except ValueError:
         return None
+    return numeric if math.isfinite(numeric) else None
 
 
 def build_indicator_values(points: list[RawIndicatorPoint]) -> list[IndicatorValue]:

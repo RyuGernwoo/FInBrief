@@ -48,6 +48,24 @@ def test_parse_yfinance_price_rows_uses_close_values():
     assert round(values[-1].change_percent or 0, 3) == 0.25
 
 
+def test_parse_yfinance_price_rows_skips_non_finite_values():
+    rows = [
+        {"date": "2026-07-08", "Close": float("nan")},
+        {"date": "2026-07-09", "Close": 3990.24},
+    ]
+
+    values = parse_yfinance_price_rows(
+        rows,
+        indicator_id="shanghai",
+        name="상해종합",
+        unit="pt",
+    )
+
+    assert len(values) == 1
+    assert values[0].current_value == 3990.24
+    assert values[0].previous_value is None
+
+
 def test_parse_ecos_key_statistics_maps_latest_value():
     payload = {
         "KeyStatisticList": {
