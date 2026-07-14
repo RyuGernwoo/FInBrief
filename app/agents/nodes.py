@@ -99,23 +99,27 @@ def ingest_news(state: BriefState) -> dict[str, Any]:
             return {}
 
         id_by_url = _news_id_by_url(ingestion.upsert_news_documents(documents))
-        # 이미 임베딩된 문서는 스킵(재임베딩 버스트→레이트리밋 방지). 미임베딩은 다음 실행에
-        # 재시도되어 자연 백필된다. 조회 미지원(테스트 mock)이면 전체 대상.
+        # 이미 임베딩된 문서는 스킵(중복 재임베딩 방지). 미임베딩은 다음 실행에 다시 대상이 됨.
         all_ids = [i for i in (id_by_url.get(str(d.url)) for d in documents) if i]
         already = (ingestion.existing_passage_news_ids(all_ids)
                    if hasattr(ingestion, "existing_passage_news_ids") else set())
+        targets = [d for d in documents
+                   if id_by_url.get(str(d.url)) and id_by_url.get(str(d.url)) not in already]
+
+        # 배치 임베딩: 문서 1건당 호출 1번(→레이트리밋) 대신 한 호출에 다건.
+        if hasattr(provider, "embed_passages"):
+            embeddings = provider.embed_passages(targets)
+        else:   # 폴백(mock 등): 단건 재시도
+            embeddings = [_embed_passage_with_retry(provider, d) for d in targets]
+
         rows: list[dict[str, Any]] = []
         failed = 0
-        for document in documents:
-            news_id = id_by_url.get(str(document.url))
-            if news_id is None or news_id in already:
-                continue
-            embedding = _embed_passage_with_retry(provider, document)
+        for document, embedding in zip(targets, embeddings):
             if embedding is None:
                 failed += 1
                 continue
             rows.append({
-                "news_id": news_id,
+                "news_id": id_by_url[str(document.url)],
                 "embedding": embedding,
                 "embedding_model": EMBEDDING_PASSAGE_MODEL,
                 "embedding_kind": "passage",
