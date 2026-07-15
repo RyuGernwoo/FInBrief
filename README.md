@@ -101,6 +101,7 @@ FinBrief는 이 과정에서 발생하는 비용과 시간을 절약해주고, �
 - 발표자료: [발표자료](https://docs.google.com/presentation/d/1gAJZMaWaiphCOfIBMWRUbWzpxpaekBtgRpbDIWftlV8/edit?slide=id.g3f169a78542_2_266#slide=id.g3f169a78542_2_266)
 - 기획서: [FinBrief 기획서 및 7일 로드맵](files/FinBrief_기획서_및_7일_로드맵.md)
 - 시스템 문서: [제품 기능 명세](files/FinBrief_제품_기능_명세.md), [시스템 아키텍처](files/FinBrief_시스템_아키텍처.md), [데이터 흐름](files/FinBrief_데이터_흐름.md), [API 명세](files/FinBrief_API_명세.md)
+- 검증 결과: [FinBrief 검증 결과](files/FinBrief_검증_결과_2026-07-15.md)
 - 참고한 기술:
   - FastAPI
   - LangGraph
