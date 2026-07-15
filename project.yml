@@ -9,7 +9,7 @@ team:
       role: FastAPI, Supabase DB, RAG, CI/CD, Langfuse, GCE Infra, Docker, LLMOps
       github: RyuGernwoo
     - name: 이호민
-      role: LangGraph, LiteLLM, Discord ChatBot, Webpage, RAG
+      role: LangGraph, RAG, LiteLLM, Discord ChatBot, Webpage, LLMOps
       github: LeeHome2
 
 project:
@@ -53,15 +53,15 @@ tech_stack:
     - LiteLLM
     - Langfuse
     - Upstage Solar
-    - Gemini Image
+    - Gemini Nano Banana
   database:
     - Supabase PostgreSQL
     - pgvector
   infra:
     - Docker
     - Docker Compose
-    - GitHub Actions
-    - GCP Compute Engine
+    - GitHub Actions (CI/CD)
+    - GCP Compute Engine (GCE)
 
 links:
   demo_video_url: "https://drive.google.com/file/d/1bvIoGhafX-Vj6hZNtHcHMVZAOvjXPyVT/view?usp=sharing"
@@ -75,6 +75,8 @@ blog:
     - AI
     - Finance
     - RAG
+    - Docker
+    - CI/CD
     - LLMOps
     - Discord
   cover_image: files/ex.png

@@ -25,7 +25,7 @@ FinBrief는 흩어진 금융 지표, 뉴스, 토픽별 변동 근거를 한 번�
 - 초보 사용자는 어떤 지표를 봐야 하는지 판단하기 어렵습니다.
 - 매일 반복적으로 같은 정보를 찾는 데 시간이 많이 듭니다.
 
-FinBrief는 이 문제를 **"관심 토픽 기반 AI 자동 브리핑"**으로 해결합니다.
+FinBrief는 이 문제를 "**관심 토픽 기반 AI 자동 브리핑**"으로 해결합니다.
 
 ---
 
@@ -71,7 +71,7 @@ FinBrief는 이 과정에서 발생하는 비용과 시간을 절약해주고, �
 ## 5. 데모 영상
 
 - 데모 영상: [데모 영상](https://drive.google.com/file/d/1bvIoGhafX-Vj6hZNtHcHMVZAOvjXPyVT/view?usp=sharing)
-- 배포 URL: [웹페이지](http://34.50.41.2:8000/) / [디스코드 봇](https://discord.com/oauth2/authorize?client_id=1524583710505041950&permissions=34816&integration_type=0&scope=bot+applications.commands)
+- 배포 URL: [소개 웹페이지](http://34.50.41.2:8000/) / [디스코드 봇](https://discord.com/oauth2/authorize?client_id=1524583710505041950&permissions=34816&integration_type=0&scope=bot+applications.commands)
 - GitHub Repository: [FinBrief](https://github.com/RyuGernwoo/FInBrief)
 - 추가 자료: ![데모 이미지](./files/ex.png)
 
@@ -91,7 +91,7 @@ FinBrief는 이 과정에서 발생하는 비용과 시간을 절약해주고, �
 | 이름 | 역할 | GitHub |
 |---|---|---|
 | 류건우 | FastAPI, Supabase DB, RAG, CI/CD, Langfuse, GCE Infra, Docker, LLMOps | @RyuGernwoo |
-| 이호민 | LangGraph, LiteLLM, Discord ChatBot, Webpage, RAG | @LeeHome2 |
+| 이호민 | LangGraph, RAG, LiteLLM, Discord ChatBot, Webpage, LLMOps | @LeeHome2 |
 
 ---
 
