@@ -14,6 +14,7 @@ from app.core.schemas import NewsEvidence
 
 
 RAG_SINCE_DAYS = 0   # 당일만 탐색(어제 뉴스 제외). KST 자정 기준.
+RAG_FALLBACK_DAYS = 2   # 당일 근거가 비면 최근 N일로 확장(아침 ingest 실패 등 대비).
 RAG_K = 5
 RAG_CANDIDATES = 40   # match_news 에서 넓게 받아오고, postprocess 가 RAG_K 로 컷
 RAG_MIN_SIMILARITY = 0.2

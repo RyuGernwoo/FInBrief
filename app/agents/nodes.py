@@ -319,7 +319,9 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
     if repos is None or not topics:
         return {}
 
-    since = rag.since_for(_parse_run_date(state["run_date"]))
+    run_date_parsed = _parse_run_date(state["run_date"])
+    since = rag.since_for(run_date_parsed)
+    fallback_since = rag.since_for(run_date_parsed, days=rag.RAG_FALLBACK_DAYS)
     indicator_index = _indicators_index(state.get("indicators", []))
     enriched: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -342,6 +344,13 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
                     repos.news.match(topic_model, since, rag.RAG_CANDIDATES),
                     k=rag.RAG_K,
                 )
+                # 당일 근거가 비면(아침 ingest 실패로 당일 뉴스 0건 등) 최근 N일로 확장 재검색.
+                # 무근거 폴백 카드 대신 최신 근거라도 붙이기 위함.
+                if not evidence:
+                    evidence = rag.postprocess_evidence(
+                        repos.news.match(topic_model, fallback_since, rag.RAG_CANDIDATES),
+                        k=rag.RAG_K,
+                    )
                 item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
             except Exception as exc:
                 item["evidence"] = []
