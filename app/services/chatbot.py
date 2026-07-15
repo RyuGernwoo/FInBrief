@@ -228,9 +228,14 @@ def welcome_text(service: "SubscriptionService") -> str:
     """봇 초대/도움말 온보딩 문구. 추천만 LLM, 본문은 비용·지연 안전하게 고정 텍스트."""
     cats = _category_summary(service.catalog())
     return ("👋 **브리핑 메이트 FinBrief**가 도착했어요!\n관심 금융 지표를 고르면 매일 아침 7시에 카드뉴스로 챙겨드릴게요 🚀\n\n"
-            "• 구독:  `@finbrief 나스닥 구독해줘`  또는  `/finbrief 나스닥 추가`  (저를 멘션해도 좋아요!)\n\n"
-            "• 조회:  `토픽 목록`   • 취소:  `나스닥 빼줘`   • 등급:  `내 등급`\n\n"
-            f"• 구독 가능(예시): {cats}\n\n")
+            "• 토픽 구독:  `@finbrief 나스닥 구독해줘`  또는  `/finbrief 나스닥 추가`  (멘션으로 불러도 좋아요!)\n"
+            "• 토픽 조회:  `토픽 목록 보여줘`\n"
+            "• 구독 취소:  `나스닥 취소해줘`\n"
+            "• 리포트 설명: `오늘 리포트 설명해줘`\n"
+            "• 출처 확인: `오늘 카드뉴스 출처 알려줘`\n"
+            "• 티어 확인:  `내 티어 확인해줘`\n"
+
+            f"• 구독 가능 예시 {cats}\n\n")
 
 
 def _message_tokens(message: str) -> set[str]:
@@ -596,8 +601,14 @@ def _handle_core(
             elif len(sub_sugg) > 1:
                 return _resp("clarify_topic", "blocked", replies.format_clarify_topic_reply(sub_sugg))
         if topic and topic in sub_ids:
-            service.remove(channel, ext_user_id, topic)
-            return _resp(intent, "completed", replies.format_delete_success(names.get(topic, topic)), topic)
+            remaining = service.remove(channel, ext_user_id, topic)
+            current_topics = [names.get(item.topic_id, item.topic_id) for item in remaining]
+            return _resp(
+                intent,
+                "completed",
+                replies.format_delete_success(names.get(topic, topic), current_topics),
+                topic,
+            )
         if not topic:
             return _resp(intent, "blocked", replies.format_delete_needs_topic())
         subscribed = ", ".join(names.get(t, t) for t in sub_ids) or "없음"
@@ -614,7 +625,7 @@ def _handle_core(
     )
     reply = f"{replies.format_unknown_reply(llm_reply.get('reply') if llm_reply else None)}\n🗂️ 구독 가능 예시: {cats}"
     if reco:
-        reply += f"\n💡 관심사에 맞춰 추천: {', '.join(reco)}"
+        reply += f"\n\n💡 관심사에 맞춰 추천: {', '.join(reco)}"
     return _resp(
         "unknown",
         "blocked",

@@ -35,7 +35,7 @@ def format_add_success(
         current_line = f"\n현재 구독 토픽: {', '.join(current_topics)}\n\n"
     return (
         f"🎉 좋아요! {topic_name}을 아침 브리핑에 쏙 넣어둘게요.\n\n"
-        f"현재 {used}/{max_topics}개 토픽을 구독 중이에요!\n\n"
+        f"현재 {used}/{max_topics}개 토픽을 구독 중이에요!\n"
         f"{current_line}"
         '다른 관심사가 생기면 "비트코인 추가"처럼 편하게 말해 주세요.'
     )
@@ -82,7 +82,7 @@ def format_list_topics(topic_names: list[str]) -> str:
 def format_tier_status(tier: str, used: int, max_topics: int) -> str:
     remaining = max(max_topics - used, 0)
     return (
-        f"\n📊 현재 {tier} 티어예요!\n\n"
+        f"\n📊 현재 {tier} 티어예요! (티어 기능은 추후 확장 예정)\n\n"
         f"{max_topics}개 중 {used}개 토픽을 사용 중이고, 아직 {remaining}개를 더 추가할 수 있어요."
     )
 
@@ -94,17 +94,21 @@ def format_delete_needs_topic() -> str:
     )
 
 
-def format_delete_success(topic_name: str) -> str:
+def format_delete_success(topic_name: str, current_topics: list[str] | None = None) -> str:
+    current_line = ""
+    if current_topics is not None:
+        current_line = f"\n현재 구독 토픽: {', '.join(current_topics) if current_topics else '없음'}\n\n"
     return (
         f"\n✅ {topic_name}은 구독 목록에서 빼두었어요!\n\n"
+        f"{current_line}"
         "필요하면 언제든 다시 추가할 수 있어요."
     )
 
 
 def format_unknown_reply(answer: str | None = None) -> str:
     fallback = (
-        "\n제가 바로 도와드릴 수 있는 건 `토픽 구독`, `목록 조회`, `구독 취소`, `리포트 설명`, `출처 설명`, `티어 확인`이에요! ✨\n\n"
-        '예: "나스닥 구독해줘", "내 토픽 보여줘", "비트코인 취소해줘", "리포트 설명해줘", "출처 설명해줘", "티어 확인해줘"'
+        "제가 바로 도와드릴 수 있는 건 `토픽 구독`, `목록 조회`, `구독 취소`, `리포트 설명`, `출처 설명`, `티어 확인`이에요! ✨\n\n"
+        '예: "나스닥 구독해줘", "내 토픽 보여줘", "비트코인 취소해줘", "리포트 설명해줘", "출처 설명해줘", "티어 확인해줘"\n\n'
     )
     if not answer:
         return fallback
