@@ -515,13 +515,15 @@ def _clip(s, n: int) -> str:
 
 
 def _clip_head(s, n: int) -> str:
-    """제목은 한도 초과 시 단어(공백) 경계에서 끊어 숫자·단어 중간 잘림을 막는다."""
+    """제목은 한도 초과 시 단어(공백) 경계에서 끊고 …를 붙여 '미완성'이 아닌 '더 있음'으로
+    보이게 한다(결과는 n자 이하). 예전엔 … 없이 잘라 '스페이스X 상장 후 첫'처럼 어색했음."""
     s = str(s).strip()
     if len(s) <= n:
         return s
-    cut = s[:n].rstrip()
+    cut = s[: n - 1].rstrip()          # …자리 확보
     sp = cut.rfind(" ")
-    return cut[:sp].rstrip() if sp >= n * 0.5 else cut
+    base = cut[:sp].rstrip() if sp >= (n - 1) * 0.5 else cut
+    return base + "…"
 
 
 def _clip_body(s, n: int) -> str:
@@ -632,11 +634,11 @@ def _grounded_fallback(topic: dict, data: dict, news: list[dict]) -> tuple[str, 
     chg = data.get("change_pct")
     if val:
         arrow = "↑" if (chg or 0) > 0 else ("↓" if (chg or 0) < 0 else "")
-        head = _clip_head(f"{name} {val}{unit}", 20)
+        head = _clip_head(f"{name} {val}{unit}", 26)
         lead = _clip(f"{name} 현재 {val}{unit}, 전일 대비 {_fmt_pct(chg)}%{arrow}", 45)
         return head, lead
     top = (news or [{}])[0]
-    head = _clip_head(str(top.get("title") or name), 20)
+    head = _clip_head(str(top.get("title") or name), 26)
     lead = _clip(str(top.get("title") or name), 45)
     return head, lead
 
@@ -692,7 +694,7 @@ def _analyze(
     else:
         raw = _local_analysis(topic, data, news)
 
-    headline = _clip_head(raw.get("headline", topic["name"]), 20)
+    headline = _clip_head(raw.get("headline", topic["name"]), 26)
     lead = _clip(raw.get("lead", ""), 45)
     # 관련성 가드: 근거 뉴스에 토픽명이 전혀 없으면(무관한 근거) 토픽을 단정하는
     # 헤드라인/리드를 근거 기반 사실(지표값·실뉴스 제목)로 대체 → 근거 없는 주장 방지.
@@ -780,7 +782,7 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
         issues.append("no-source")
     if not content.get("body"):
         issues.append("no-body")
-    if len(content.get("headline", "")) > 20:   # 카드 headline max(card_schema)와 정합
+    if len(content.get("headline", "")) > 26:   # 카드 headline max(card_schema)와 정합
         issues.append("headline-overflow")
     if len(content.get("lead", "")) > 45:
         issues.append("lead-overflow")

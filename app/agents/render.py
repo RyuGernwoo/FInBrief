@@ -70,10 +70,10 @@ def render_card(content: dict, out_path: str) -> str:
     d.text((bx + bs / 2, by + bs / 2), cat, font=_fit_font(d, cat, bs - 20, 30, 15), fill=accent, anchor="mm")
     tx = bx + bs + 26
     d.text((tx, by + 8), content.get("subtitle", ""), font=_f(30), fill=GRAY, anchor="lm")
-    # 제목: 오른쪽 여백까지 폭에 맞춰 폰트 자동 축소(60→38). 잘림(…) 없이 전체 표시.
+    # 제목: 오른쪽 여백까지 폭에 맞춰 폰트 자동 축소(60→30). 잘림(…) 없이 전체 표시.
     head = str(content.get("headline", ""))
     head_maxw = (CANVAS - padx) - tx - 8
-    d.text((tx, by + 66), head, font=_fit_font(d, head, head_maxw, 60, 38),
+    d.text((tx, by + 66), head, font=_fit_font(d, head, head_maxw, 60, 30),
            fill=INK, anchor="lm", stroke_width=2, stroke_fill=INK)
     ix0, iy0, ix1, iy1 = padx, 200, CANVAS - padx, 600
     ip = content.get("image_url")
