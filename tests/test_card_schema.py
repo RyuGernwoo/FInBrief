@@ -5,7 +5,7 @@ from app.agents.card_schema import CardContent
 
 def test_headline_overflow_rejected():
     with pytest.raises(ValidationError):
-        CardContent(category="MARKET", subtitle="s", headline="x" * 25, lead="l", body="b", source="src")
+        CardContent(category="MARKET", subtitle="s", headline="x" * 27, lead="l", body="b", source="src")
 
 
 def test_valid_card():

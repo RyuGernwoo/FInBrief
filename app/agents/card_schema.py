@@ -12,7 +12,7 @@ class CardContent(BaseModel):
     category: str                          # GLOBAL|MARKET|DOMESTIC|CRYPTO|FX
     index_no: str = "00"
     subtitle: str = Field(max_length=20)
-    headline: str = Field(max_length=20)
+    headline: str = Field(max_length=26)
     lead: str = Field(max_length=45)
     body: str = Field(max_length=240)
     source: str
