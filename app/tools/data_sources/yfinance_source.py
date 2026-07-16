@@ -72,16 +72,29 @@ def fetch_yfinance_prices(
     except ImportError:
         return []
 
-    dataframe = yf.download(
-        ticker,
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
-        threads=False,
-        timeout=10,
-        multi_level_index=False,
-    )
+    import time
+
+    # 아침 배치는 15개 yfinance 슬롯을 연속 호출 → 야후 레이트리밋/일시 오류로 일부가
+    # 빈 결과가 되면 그 지표가 리포트에서 n/a 로 빠진다. 실패/빈값이면 백오프 재시도.
+    dataframe = None
+    for attempt in range(3):
+        try:
+            dataframe = yf.download(
+                ticker,
+                period=period,
+                interval=interval,
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+                timeout=10,
+                multi_level_index=False,
+            )
+            if dataframe is not None and not getattr(dataframe, "empty", True):
+                break
+        except Exception:
+            dataframe = None
+        if attempt < 2:
+            time.sleep(0.8 * (attempt + 1))
     return parse_yfinance_price_rows(
         _dataframe_to_price_rows(dataframe),
         indicator_id=indicator_id,
