@@ -856,66 +856,90 @@ def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | 
     return {"status": "skipped"}
 
 
+def _user_channels(subs: list) -> list:
+    """사용자의 발송 채널 후보를 '가장 최근 구독 채널 우선'으로 중복 없이 반환."""
+    ordered = sorted(subs, key=lambda s: str(_value(s, "created_at") or ""), reverse=True)
+    out: list = []
+    for s in ordered:
+        cid = _value(s, "discord_channel_id") or _value(s, "channel_id")
+        if cid and cid not in out:
+            out.append(cid)
+    return out
+
+
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
+    """[나] 계정 단위 발송: 사용자마다 '대표 채널 1곳'에 전체시장 리포트 + 구독 토픽 카드를 모아 보낸다.
+    대표 채널 = 가장 최근 구독 채널. 그 채널이 죽었으면(404 등) 다음 후보 채널로 폴백 → 카드 유실 방지.
+    (예전엔 구독한 채널별로 흩어져, 그 채널을 지우면 해당 카드가 유실됐음)"""
+    from collections import OrderedDict
+
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     want_report = state.get("deliver_report", True)
     want_cards = state.get("deliver_cards", True)
     report_url = state.get("report_url") if want_report else None
-    deliveries = []
+    deliveries: list[dict[str, Any]] = []
 
-    # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
-    if report_url:
-        seen_channels: set[tuple[Any, Any]] = set()
-        for sub in subscriptions:
-            channel = _value(sub, "channel")
-            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-            key = (channel, channel_id)
-            if key in seen_channels:
-                continue
-            seen_channels.add(key)
-            res = _send_to(channel, channel_id, "📊 오늘의 증권 (전체시장)", report_url)
+    by_user: "OrderedDict[Any, list]" = OrderedDict()
+    for sub in subscriptions:
+        by_user.setdefault(_value(sub, "user_id"), []).append(sub)
+
+    for user_id, subs in by_user.items():
+        channel = _value(subs[0], "channel")
+        candidates = _user_channels(subs)
+
+        # 이 사용자의 발송 아이템: [리포트] + 구독 토픽 카드(중복 토픽 제거).
+        items: list[tuple] = []
+        if report_url:
+            items.append(("report", None, None, "📊 오늘의 증권 (전체시장)", report_url))
+        if want_cards:
+            seen_t: set = set()
+            for s in subs:
+                tid = _value(s, "topic_id")
+                if tid in seen_t:
+                    continue
+                seen_t.add(tid)
+                card = by_topic.get(tid)
+                if card is None:
+                    deliveries.append({"delivery_id": f"{user_id}:{tid}", "user_id": user_id,
+                                       "channel": channel, "topic_id": tid, "card_id": None,
+                                       "status": "skipped", "attempts": 0, "error_code": None})
+                    continue
+                items.append(("card", tid, card.get("card_id"),
+                              notifier.format_card_text(card),
+                              card.get("image_path") or card.get("image_url")))
+
+        if not items:
+            continue
+        if not candidates:                      # 발송할 채널 없음 → 리포트·카드 모두 skip 기록
+            for kind, tid, cid, _t, _i in items:
+                deliveries.append({
+                    "delivery_id": (f"report:{user_id}" if kind == "report" else f"{user_id}:{tid}"),
+                    "user_id": user_id, "channel": channel, "topic_id": tid, "card_id": cid,
+                    "status": "skipped", "attempts": 0, "error_code": None})
+            continue
+
+        # 대표 채널을 하나로 확정: 발송 실패 시 다음 후보로 승격 → 이후 아이템은 같은 채널로.
+        ci, target = 0, candidates[0]
+        for kind, tid, card_id, text, image in items:
+            res = _send_to(channel, target, text, image)
+            while res.get("status") == "failed" and ci + 1 < len(candidates):
+                ci += 1
+                target = candidates[ci]
+                res = _send_to(channel, target, text, image)
             deliveries.append({
-                "delivery_id": f"report:{channel_id or _value(sub, 'user_id')}",
-                "user_id": _value(sub, "user_id"),
-                "channel": channel,
-                "topic_id": None,
-                "card_id": None,
-                "status": res.get("status", "failed"),
-                "attempts": 1,
-                "error_code": res.get("error"),
+                "delivery_id": (f"report:{user_id}" if kind == "report" else f"{user_id}:{tid}"),
+                "user_id": user_id, "channel": channel, "topic_id": tid, "card_id": card_id,
+                "channel_id": target, "status": res.get("status", "failed"),
+                "attempts": 1, "error_code": res.get("error"),
             })
 
-    # 2) 구독 토픽별 카드 발송 (deliver_cards=False 면 스킵).
-    if want_cards:
-        for sub in subscriptions:
-            topic_id = _value(sub, "topic_id")
-            user_id = _value(sub, "user_id")
-            channel = _value(sub, "channel")
-            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-            card = by_topic.get(topic_id)
-
-            base = {
-                "delivery_id": f"{user_id}:{topic_id}",
-                "user_id": user_id,
-                "channel": channel,
-                "topic_id": topic_id,
-                "card_id": card.get("card_id") if card else None,
-            }
-
-            if not card:
-                deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
-                continue
-
-            res = _send_to(channel, channel_id, notifier.format_card_text(card),
-                           card.get("image_path") or card.get("image_url"))
-            deliveries.append({
-                **base,
-                "status": res.get("status", "failed"),
-                "attempts": 1,
-                "error_code": res.get("error"),
-            })
+    # 미발송(failed) 카드는 조용히 묻히지 않게 run errors 로 표면화.
+    delivery_errors = [{"code": "DELIVERY_FAILED",
+                        "message": f"{d.get('topic_id')} -> {d.get('error_code')}",
+                        "node": "deliver", "topic": d.get("topic_id")}
+                       for d in deliveries
+                       if d.get("status") == "failed" and d.get("topic_id")]
 
     with observability.span(
         "finbrief.delivery.dispatch",
@@ -932,4 +956,7 @@ def deliver(state: BriefState) -> dict[str, Any]:
             status = str(item.get("status", "unknown"))
             status_counts[status] = status_counts.get(status, 0) + 1
         span.update(output={"delivery_count": len(deliveries), "status_counts": status_counts})
-    return {"deliveries": deliveries}
+    result: dict[str, Any] = {"deliveries": deliveries}
+    if delivery_errors:
+        result["errors"] = delivery_errors
+    return result
