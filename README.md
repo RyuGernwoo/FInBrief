@@ -193,7 +193,7 @@ flowchart TD
 | **리포트 · 전달** | Pillow, Gemini image model, Discord.py |
 | **관측성 · 인프라** | Langfuse, Docker Compose, GitHub Actions, GCP Compute Engine |
 
-## 🚀 빌드 & 실행
+## Docker 실행 🐳
 
 **요구 사항**: Python 3.11+, Docker (권장). 실데이터 실행에는 Supabase, Upstage / Gemini / FRED / ECOS API 키, Discord 봇 토큰 등이 필요합니다. 전체 목록은 [`.env.example`](.env.example)과 [`README_DETAIL.md`](files/README_DETAIL.md)를 참고하세요.
 
@@ -236,7 +236,7 @@ tests/           자동 테스트
 .github/workflows/  CI/CD workflow
 ```
 
-## 🔄 CI/CD
+## CI/CD 🔄
 
 GitHub Actions에서 테스트와 배포를 분리해 운영합니다.
 
