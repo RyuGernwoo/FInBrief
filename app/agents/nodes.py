@@ -319,7 +319,9 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
     if repos is None or not topics:
         return {}
 
-    since = rag.since_for(_parse_run_date(state["run_date"]))
+    run_date_parsed = _parse_run_date(state["run_date"])
+    since = rag.since_for(run_date_parsed)
+    fallback_since = rag.since_for(run_date_parsed, days=rag.RAG_FALLBACK_DAYS)
     indicator_index = _indicators_index(state.get("indicators", []))
     enriched: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -342,6 +344,13 @@ def retrieve_evidence(state: BriefState) -> dict[str, Any]:
                     repos.news.match(topic_model, since, rag.RAG_CANDIDATES),
                     k=rag.RAG_K,
                 )
+                # 당일 근거가 비면(아침 ingest 실패로 당일 뉴스 0건 등) 최근 N일로 확장 재검색.
+                # 무근거 폴백 카드 대신 최신 근거라도 붙이기 위함.
+                if not evidence:
+                    evidence = rag.postprocess_evidence(
+                        repos.news.match(topic_model, fallback_since, rag.RAG_CANDIDATES),
+                        k=rag.RAG_K,
+                    )
                 item["evidence"] = [ev.model_dump(mode="json") for ev in evidence]
             except Exception as exc:
                 item["evidence"] = []
@@ -506,13 +515,15 @@ def _clip(s, n: int) -> str:
 
 
 def _clip_head(s, n: int) -> str:
-    """제목은 한도 초과 시 단어(공백) 경계에서 끊어 숫자·단어 중간 잘림을 막는다."""
+    """제목은 한도 초과 시 단어(공백) 경계에서 끊고 …를 붙여 '미완성'이 아닌 '더 있음'으로
+    보이게 한다(결과는 n자 이하). 예전엔 … 없이 잘라 '스페이스X 상장 후 첫'처럼 어색했음."""
     s = str(s).strip()
     if len(s) <= n:
         return s
-    cut = s[:n].rstrip()
+    cut = s[: n - 1].rstrip()          # …자리 확보
     sp = cut.rfind(" ")
-    return cut[:sp].rstrip() if sp >= n * 0.5 else cut
+    base = cut[:sp].rstrip() if sp >= (n - 1) * 0.5 else cut
+    return base + "…"
 
 
 def _clip_body(s, n: int) -> str:
@@ -623,11 +634,11 @@ def _grounded_fallback(topic: dict, data: dict, news: list[dict]) -> tuple[str, 
     chg = data.get("change_pct")
     if val:
         arrow = "↑" if (chg or 0) > 0 else ("↓" if (chg or 0) < 0 else "")
-        head = _clip_head(f"{name} {val}{unit}", 20)
+        head = _clip_head(f"{name} {val}{unit}", 26)
         lead = _clip(f"{name} 현재 {val}{unit}, 전일 대비 {_fmt_pct(chg)}%{arrow}", 45)
         return head, lead
     top = (news or [{}])[0]
-    head = _clip_head(str(top.get("title") or name), 20)
+    head = _clip_head(str(top.get("title") or name), 26)
     lead = _clip(str(top.get("title") or name), 45)
     return head, lead
 
@@ -683,7 +694,7 @@ def _analyze(
     else:
         raw = _local_analysis(topic, data, news)
 
-    headline = _clip_head(raw.get("headline", topic["name"]), 20)
+    headline = _clip_head(raw.get("headline", topic["name"]), 26)
     lead = _clip(raw.get("lead", ""), 45)
     # 관련성 가드: 근거 뉴스에 토픽명이 전혀 없으면(무관한 근거) 토픽을 단정하는
     # 헤드라인/리드를 근거 기반 사실(지표값·실뉴스 제목)로 대체 → 근거 없는 주장 방지.
@@ -771,7 +782,7 @@ def _verify(content: dict, data: dict) -> tuple[bool, list[str]]:
         issues.append("no-source")
     if not content.get("body"):
         issues.append("no-body")
-    if len(content.get("headline", "")) > 20:   # 카드 headline max(card_schema)와 정합
+    if len(content.get("headline", "")) > 26:   # 카드 headline max(card_schema)와 정합
         issues.append("headline-overflow")
     if len(content.get("lead", "")) > 45:
         issues.append("lead-overflow")
@@ -845,66 +856,90 @@ def _send_to(channel: str, channel_id: str | None, text: str, image_path: str | 
     return {"status": "skipped"}
 
 
+def _user_channels(subs: list) -> list:
+    """사용자의 발송 채널 후보를 '가장 최근 구독 채널 우선'으로 중복 없이 반환."""
+    ordered = sorted(subs, key=lambda s: str(_value(s, "created_at") or ""), reverse=True)
+    out: list = []
+    for s in ordered:
+        cid = _value(s, "discord_channel_id") or _value(s, "channel_id")
+        if cid and cid not in out:
+            out.append(cid)
+    return out
+
+
 def deliver(state: BriefState) -> dict[str, Any]:
-    """[나] 구독 기준 fan-out 발송. 아침마다 채널별로 전체시장 리포트 1회 + 구독 토픽 카드(최대 max_topics)."""
+    """[나] 계정 단위 발송: 사용자마다 '대표 채널 1곳'에 전체시장 리포트 + 구독 토픽 카드를 모아 보낸다.
+    대표 채널 = 가장 최근 구독 채널. 그 채널이 죽었으면(404 등) 다음 후보 채널로 폴백 → 카드 유실 방지.
+    (예전엔 구독한 채널별로 흩어져, 그 채널을 지우면 해당 카드가 유실됐음)"""
+    from collections import OrderedDict
+
     by_topic = {c["topic_id"]: c for c in state.get("cards", [])}
     subscriptions = state["subscriptions"] if "subscriptions" in state else fx.FIXTURE_SUBSCRIPTIONS
     want_report = state.get("deliver_report", True)
     want_cards = state.get("deliver_cards", True)
     report_url = state.get("report_url") if want_report else None
-    deliveries = []
+    deliveries: list[dict[str, Any]] = []
 
-    # 1) 전체시장 리포트를 구독이 있는 채널마다 1회 발송(모든 구독자 공통 브리핑).
-    if report_url:
-        seen_channels: set[tuple[Any, Any]] = set()
-        for sub in subscriptions:
-            channel = _value(sub, "channel")
-            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-            key = (channel, channel_id)
-            if key in seen_channels:
-                continue
-            seen_channels.add(key)
-            res = _send_to(channel, channel_id, "📊 오늘의 증권 (전체시장)", report_url)
+    by_user: "OrderedDict[Any, list]" = OrderedDict()
+    for sub in subscriptions:
+        by_user.setdefault(_value(sub, "user_id"), []).append(sub)
+
+    for user_id, subs in by_user.items():
+        channel = _value(subs[0], "channel")
+        candidates = _user_channels(subs)
+
+        # 이 사용자의 발송 아이템: [리포트] + 구독 토픽 카드(중복 토픽 제거).
+        items: list[tuple] = []
+        if report_url:
+            items.append(("report", None, None, "📊 오늘의 증권 (전체시장)", report_url))
+        if want_cards:
+            seen_t: set = set()
+            for s in subs:
+                tid = _value(s, "topic_id")
+                if tid in seen_t:
+                    continue
+                seen_t.add(tid)
+                card = by_topic.get(tid)
+                if card is None:
+                    deliveries.append({"delivery_id": f"{user_id}:{tid}", "user_id": user_id,
+                                       "channel": channel, "topic_id": tid, "card_id": None,
+                                       "status": "skipped", "attempts": 0, "error_code": None})
+                    continue
+                items.append(("card", tid, card.get("card_id"),
+                              notifier.format_card_text(card),
+                              card.get("image_path") or card.get("image_url")))
+
+        if not items:
+            continue
+        if not candidates:                      # 발송할 채널 없음 → 리포트·카드 모두 skip 기록
+            for kind, tid, cid, _t, _i in items:
+                deliveries.append({
+                    "delivery_id": (f"report:{user_id}" if kind == "report" else f"{user_id}:{tid}"),
+                    "user_id": user_id, "channel": channel, "topic_id": tid, "card_id": cid,
+                    "status": "skipped", "attempts": 0, "error_code": None})
+            continue
+
+        # 대표 채널을 하나로 확정: 발송 실패 시 다음 후보로 승격 → 이후 아이템은 같은 채널로.
+        ci, target = 0, candidates[0]
+        for kind, tid, card_id, text, image in items:
+            res = _send_to(channel, target, text, image)
+            while res.get("status") == "failed" and ci + 1 < len(candidates):
+                ci += 1
+                target = candidates[ci]
+                res = _send_to(channel, target, text, image)
             deliveries.append({
-                "delivery_id": f"report:{channel_id or _value(sub, 'user_id')}",
-                "user_id": _value(sub, "user_id"),
-                "channel": channel,
-                "topic_id": None,
-                "card_id": None,
-                "status": res.get("status", "failed"),
-                "attempts": 1,
-                "error_code": res.get("error"),
+                "delivery_id": (f"report:{user_id}" if kind == "report" else f"{user_id}:{tid}"),
+                "user_id": user_id, "channel": channel, "topic_id": tid, "card_id": card_id,
+                "channel_id": target, "status": res.get("status", "failed"),
+                "attempts": 1, "error_code": res.get("error"),
             })
 
-    # 2) 구독 토픽별 카드 발송 (deliver_cards=False 면 스킵).
-    if want_cards:
-        for sub in subscriptions:
-            topic_id = _value(sub, "topic_id")
-            user_id = _value(sub, "user_id")
-            channel = _value(sub, "channel")
-            channel_id = _value(sub, "discord_channel_id") or _value(sub, "channel_id")
-            card = by_topic.get(topic_id)
-
-            base = {
-                "delivery_id": f"{user_id}:{topic_id}",
-                "user_id": user_id,
-                "channel": channel,
-                "topic_id": topic_id,
-                "card_id": card.get("card_id") if card else None,
-            }
-
-            if not card:
-                deliveries.append({**base, "status": "skipped", "attempts": 0, "error_code": None})
-                continue
-
-            res = _send_to(channel, channel_id, notifier.format_card_text(card),
-                           card.get("image_path") or card.get("image_url"))
-            deliveries.append({
-                **base,
-                "status": res.get("status", "failed"),
-                "attempts": 1,
-                "error_code": res.get("error"),
-            })
+    # 미발송(failed) 카드는 조용히 묻히지 않게 run errors 로 표면화.
+    delivery_errors = [{"code": "DELIVERY_FAILED",
+                        "message": f"{d.get('topic_id')} -> {d.get('error_code')}",
+                        "node": "deliver", "topic": d.get("topic_id")}
+                       for d in deliveries
+                       if d.get("status") == "failed" and d.get("topic_id")]
 
     with observability.span(
         "finbrief.delivery.dispatch",
@@ -921,4 +956,7 @@ def deliver(state: BriefState) -> dict[str, Any]:
             status = str(item.get("status", "unknown"))
             status_counts[status] = status_counts.get(status, 0) + 1
         span.update(output={"delivery_count": len(deliveries), "status_counts": status_counts})
-    return {"deliveries": deliveries}
+    result: dict[str, Any] = {"deliveries": deliveries}
+    if delivery_errors:
+        result["errors"] = delivery_errors
+    return result

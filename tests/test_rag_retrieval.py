@@ -182,6 +182,37 @@ def test_retrieve_evidence_is_noop_when_not_live():
     assert nodes.retrieve_evidence({"live_data": False, "topics_to_generate": [_graph_topic()]}) == {}
 
 
+def test_retrieve_evidence_falls_back_to_recent_when_same_day_empty():
+    # 당일 뉴스가 0건(아침 ingest 실패 등)이면 최근 N일로 확장 재검색해 근거를 붙인다.
+    run_date = date(2026, 7, 16)
+    same_day = rag.since_for(run_date)  # days=0
+
+    class _SinceAwareNews:
+        calls: list = []
+
+        def match(self, topic, since, k):
+            _SinceAwareNews.calls.append(since)
+            if since >= same_day:      # 당일 스코프 → 비어 있음
+                return []
+            return [_ev("feed", 0.9, "fb1")]   # 폴백(더 과거) → 근거 반환
+
+    bundle = _FakeBundle(_topic_btc())
+    bundle.news = _SinceAwareNews()
+    state = {
+        "live_data": True,
+        "repositories": bundle,
+        "run_date": "2026-07-16",
+        "topics_to_generate": [_graph_topic()],
+        "indicators": [],
+    }
+
+    out = nodes.retrieve_evidence(state)
+
+    assert [item["news_id"] for item in out["topics_to_generate"][0]["evidence"]] == ["fb1"]
+    assert len(_SinceAwareNews.calls) == 2               # 당일 → 폴백 2회 시도
+    assert _SinceAwareNews.calls[1] < _SinceAwareNews.calls[0]  # 폴백은 더 과거
+
+
 # --------------------------------------------------------------------------- #
 # collect_indicators live path (source_mapping driven, no network via monkeypatch)
 # --------------------------------------------------------------------------- #
