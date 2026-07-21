@@ -348,11 +348,18 @@ class SupabaseIngestionRepository:
         payload = [build_news_document_row(document) for document in documents]
         if not payload:
             return []
-        response = self._client.table("news_documents").upsert(
-            payload,
-            on_conflict="url",
-        ).execute()
-        return _response_data(response)
+        # 대량 upsert 를 청크로 쪼갠다. 한 statement 에 수백 건을 넣으면 Supabase
+        # statement timeout(57014) 이 발생해 아침 ingest 가 통째로 실패할 수 있다.
+        rows: list[Any] = []
+        for i in range(0, len(payload), 100):
+            response = self._client.table("news_documents").upsert(
+                payload[i:i + 100],
+                on_conflict="url",
+            ).execute()
+            data = _response_data(response)
+            if isinstance(data, list):
+                rows.extend(data)
+        return rows
 
     def upsert_news_embeddings(self, embeddings: Sequence[dict[str, Any]]) -> Any:
         payload: list[dict[str, Any]] = []
@@ -370,11 +377,17 @@ class SupabaseIngestionRepository:
             )
         if not payload:
             return []
-        response = self._client.table("news_embeddings").upsert(
-            payload,
-            on_conflict="news_id,embedding_model,embedding_kind",
-        ).execute()
-        return _response_data(response)
+        # 임베딩은 4096차원이라 행당 페이로드가 크다. 소청크(50)로 나눠 statement timeout 회피.
+        rows: list[Any] = []
+        for i in range(0, len(payload), 50):
+            response = self._client.table("news_embeddings").upsert(
+                payload[i:i + 50],
+                on_conflict="news_id,embedding_model,embedding_kind",
+            ).execute()
+            data = _response_data(response)
+            if isinstance(data, list):
+                rows.extend(data)
+        return rows
 
     def existing_passage_news_ids(self, news_ids: Sequence[str]) -> set[str]:
         """이미 passage 임베딩이 있는 news_id 집합. 재임베딩 스킵용."""
